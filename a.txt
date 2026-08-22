@@ -1,0 +1,200 @@
+import os
+from pathlib import Path
+
+import streamlit as st
+from PIL import Image
+
+from agentic_workflow import run_agentic_reasoning
+
+
+ACTION_MAP = {
+    "spaghetti_failure": {
+        "description": "🚨 PAUSE immediately — spaghetti detected",
+        "severity": "critical",
+        "color": "#ff4444",
+    },
+    "warping": {
+        "description": "⚠️ Slow 70%, raise bed +5 °C, alert",
+        "severity": "warning",
+        "color": "#ff9900",
+    },
+    "first_layer_failure": {
+        "description": "🚨 PAUSE — first layer failed, alert operator",
+        "severity": "critical",
+        "color": "#ff4444",
+    },
+    "under_extrusion": {
+        "description": "⚠️ Slow 80%, raise nozzle +5 °C",
+        "severity": "warning",
+        "color": "#ff9900",
+    },
+    "stringing": {
+        "description": "⚠️ Lower nozzle -3 °C, tune retraction later",
+        "severity": "warning",
+        "color": "#ff9900",
+    },
+    "blob_or_zit": {
+        "description": "⚠️ Slow 85%, alert",
+        "severity": "warning",
+        "color": "#ff9900",
+    },
+    "layer_shift": {
+        "description": "🚨 PAUSE — mechanical failure (layer shift)",
+        "severity": "critical",
+        "color": "#ff4444",
+    },
+    "nozzle_clog": {
+        "description": "🚨 PAUSE — nozzle clog, run recovery",
+        "severity": "critical",
+        "color": "#ff4444",
+    },
+    "good_print": {
+        "description": "✅ CONTINUE — print looks healthy",
+        "severity": "ok",
+        "color": "#00cc66",
+    },
+}
+
+
+def get_default_model_path() -> str:
+    candidates = [
+        Path("Models/best.pt"),
+        Path("Models/best_8hr.pt"),
+        Path("Models/yolo11s.pt"),
+        Path("Models/yolo11m.pt"),
+        Path("Code/runs/detect/print_guard/weights/best.pt"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return "Models/best8hr.pt"
+
+
+@st.cache_resource(show_spinner=False)
+def load_model(model_path: str):
+    from ultralytics import YOLO
+
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model not found: {model_path}")
+
+    return YOLO(model_path)
+
+
+def top_detection(results):
+    best_name = "good_print"
+    best_conf = 0.0
+    best_sev = -1
+
+    for result in results:
+        if result.boxes is None:
+            continue
+        for box in result.boxes:
+            cls_id = int(box.cls.item())
+            conf = float(box.conf.item())
+            name = result.names[cls_id]
+            action = ACTION_MAP.get(name, ACTION_MAP["good_print"])
+            sev_rank = {"ok": 0, "warning": 1, "critical": 2}[action["severity"]]
+            if conf < 0.05:
+                continue
+            if sev_rank > best_sev or (sev_rank == best_sev and conf > best_conf):
+                best_name = name
+                best_conf = conf
+                best_sev = sev_rank
+
+    return best_name, best_conf
+
+
+def run_inference(model, image, conf_thresh: float, iou_thresh: float):
+    results = model.predict(
+        source=image,
+        conf=conf_thresh,
+        iou=iou_thresh,
+        verbose=False,
+        stream=False,
+    )
+    return results
+
+
+def main():
+    st.set_page_config(page_title="Precint3D Copilot", page_icon="🖨️", layout="wide")
+    st.title("🖨️ Precint3D Manufacturing Copilot-Sai")
+    st.caption("Upload a printer frame to detect defects and get a recommended action")
+
+    with st.sidebar:
+        st.header("Settings")
+        model_path = st.text_input("Model path", value=get_default_model_path())
+        conf_thresh = st.slider("Confidence threshold", 0.05, 0.95, 0.40, step=0.01)
+        iou_thresh = st.slider("IoU threshold", 0.10, 0.95, 0.45, step=0.01)
+        st.markdown("---")
+        st.markdown("This UI uses the same action map as the project’s inference scripts.")
+
+    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png", "bmp"])
+
+    if uploaded_file is None:
+        st.info("Choose an image from the camera feed or a saved frame to begin inference.")
+        return
+
+    image = Image.open(uploaded_file).convert("RGB")
+
+    try:
+        model = load_model(model_path)
+    except FileNotFoundError as exc:
+        st.error(str(exc))
+        st.stop()
+
+    with st.spinner("Running inference..."):
+        results = run_inference(model, image, conf_thresh, iou_thresh)
+
+    result = results[0]
+    detections = []
+    if result.boxes is not None:
+        for box in result.boxes:
+            cls_id = int(box.cls.item())
+            conf = float(box.conf.item())
+            name = result.names[cls_id]
+            detections.append({"class": name, "confidence": round(conf, 3)})
+
+    detections.sort(key=lambda item: item["confidence"], reverse=True)
+
+    top_name, top_conf = top_detection(results)
+    action = ACTION_MAP.get(top_name, ACTION_MAP["good_print"])
+    severity_label = action["severity"].upper()
+    agent_result = run_agentic_reasoning(detections, top_name, top_conf, None)
+
+    col_left, col_right = st.columns([1.2, 1.0], gap="large")
+    with col_left:
+        st.subheader("Detected result")
+        st.markdown(f"**Class:** {top_name.replace('_', ' ')}")
+        st.metric("Confidence", f"{top_conf * 100:.1f}%")
+        st.metric("Severity", severity_label)
+        st.markdown(f"**Recommended action:** {action['description']}")
+
+        st.markdown("### Agentic reasoning")
+        st.write(agent_result.get("reasoning", "No reasoning generated."))
+        st.markdown("### Verification")
+        st.write(agent_result.get("verification", "No verification generated."))
+
+        if detections:
+            st.dataframe(
+                [{"Class": d["class"], "Confidence": d["confidence"]} for d in detections],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("No detections above threshold were found.")
+
+    with col_right:
+        st.subheader("Annotated image")
+        if hasattr(result, "plot"):
+            annotated = result.plot()
+            annotated_rgb = Image.fromarray(annotated[..., ::-1])
+            st.image(annotated_rgb, caption="YOLO detections", use_container_width=True)
+        else:
+            st.image(image, caption="Original image", use_container_width=True)
+
+
+if __name__ == "__main__":
+    main()
+
+#pip install langchain-core
+# pip install langgraph    

@@ -1,0 +1,8 @@
+[
+  {"file": "01_spaghetti.jpg", "label": "spaghetti_failure", "note": "Filename is the intern's own tag for this still."},
+  {"file": "02_spaghetti_foot.jpg", "label": "spaghetti_failure", "note": "Filename is the intern's own tag for this still."},
+  {"file": "03_good_print.png", "label": "good_print", "note": "Filename is the intern's own tag for this still."},
+  {"file": "04_under_extrusion.png", "label": "under_extrusion", "note": "Filename is the intern's own tag for this still."},
+  {"file": "05_layer_shift.jpg", "label": "layer_shift", "note": "Filename is the intern's own tag for this still."},
+  {"file": "06_stringing.jpg", "label": "stringing", "note": "Filename is the intern's own tag for this still."}
+]

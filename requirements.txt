@@ -1,0 +1,10 @@
+streamlit>=1.45.0
+ultralytics
+pillow
+opencv-python-headless
+langchain-core
+langchain-groq
+langgraph
+requests
+pyserial
+pytest

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Precint3D</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #1c1917;
+      --muted: #57534e;
+      --paper: #fcfcfb;
+      --card: #ffffff;
+      --line: #e4e0d8;
+      --accent: #185fa5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+    }
+    header, section, footer {
+      width: min(52rem, calc(100% - 2.5rem));
+      margin: 0 auto;
+    }
+    header { padding: 4rem 0 2rem; }
+    .kicker {
+      font-size: 0.78rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 0.5rem;
+    }
+    h1 {
+      font-size: 2.4rem;
+      font-weight: 650;
+      letter-spacing: -0.03em;
+      margin: 0 0 0.7rem;
+    }
+    h2 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 0 0 0.45rem;
+    }
+    p, li {
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 1.02rem;
+    }
+    .lead { margin: 0 0 1.6rem; max-width: 38rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(14.5rem, 1fr));
+      gap: 0.85rem;
+      margin: 0 0 2.2rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 0.75rem;
+      padding: 1.05rem 1.1rem;
+    }
+    .card strong { color: var(--ink); font-weight: 600; }
+    a.btn {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      padding: 0.7rem 1.1rem;
+      border-radius: 0.65rem;
+      font-weight: 600;
+    }
+    a.btn:hover { filter: brightness(1.05); }
+    .hint { font-size: 0.88rem; margin-top: 0.9rem; }
+    footer { padding: 1.4rem 0 3rem; font-size: 0.85rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="kicker">FDM print monitor</p>
+    <h1>Precint3D</h1>
+    <p class="lead">Looks at a print, keeps boxes that sit on the planned path, and will pause only after a code verifier allows it. The language model does not write G-code.</p>
+    <a class="btn" href="https://share.streamlit.io" id="open-app">Open the console</a>
+    <p class="hint">The operator console is a Python Streamlit app. This page is the public door. After Streamlit Cloud is live, point the button at that URL.</p>
+  </header>
+  <section>
+    <div class="grid">
+      <div class="card">
+        <h2>Desk</h2>
+        <p>Weights, last sessions, tool bounds. What is wired and what is not.</p>
+      </div>
+      <div class="card">
+        <h2>Inspect</h2>
+        <p>One photo or a camera. Perception only. Edge warping on the bed clip is dropped.</p>
+      </div>
+      <div class="card">
+        <h2>Job</h2>
+        <p>Same G-code as the Anycubic Mega S. Path mask. OctoPrint or Marlin M25 for pause.</p>
+      </div>
+      <div class="card">
+        <h2>Bench &amp; Records</h2>
+        <p>Your labelled stills, then the event log written while the loop ran.</p>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Not claimed here</h2>
+      <p>IMU, microphone and extra thermocouple stay unwired. Store B is a JSONL file, not a vector database. A room camera is not a nozzle camera. This static site cannot run the detector.</p>
+    </div>
+  </section>
+  <footer>Precint3D · local console: <code>streamlit run app.py</code></footer>
+</body>
+</html>
