@@ -11,6 +11,8 @@ PAUSE = "M25"  # Marlin SD pause
 def pause_octoprint(url: str, api_key: str) -> str:
     import requests
 
+    if not (api_key or "").strip():
+        raise ValueError("OctoPrint API key is required.")
     base = http_url(url)
     headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
     resp = requests.post(
@@ -19,6 +21,8 @@ def pause_octoprint(url: str, api_key: str) -> str:
         headers=headers,
         timeout=5,
     )
+    if not (200 <= resp.status_code < 300):
+        raise RuntimeError(f"octoprint pause HTTP {resp.status_code}: {resp.text[:200]}")
     return f"octoprint pause HTTP {resp.status_code}"
 
 

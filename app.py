@@ -1,55 +1,102 @@
+"""Precint3D operator console. Sidebar nav: Watch, Inspect, History."""
+
+from __future__ import annotations
+
+import importlib.util
+import sys
+from pathlib import Path
+
 import streamlit as st
 
-from app_pages.bench import page_bench
-from app_pages.desk import page_desk
-from app_pages.inspect import page_inspect
-from app_pages.job import page_job
-from app_pages.records import page_records
-from ui_common import get_default_model_path, inject_css
+from ui_common import get_default_model_path, inject_css, render_sidebar_brand
+
+_ROOT = Path(__file__).resolve().parent
+
+
+def _load_page(modname: str, relpath: str):
+    """Load a page module from a file path.
+
+    Streamlit's file watcher can drop ``app_pages`` from ``sys.modules`` mid-import
+    (KeyError: 'app_pages' / 'app_pages.history'). Loading by path with a stable
+    module name avoids that race.
+    """
+    existing = sys.modules.get(modname)
+    if existing is not None:
+        return existing
+    path = _ROOT / relpath
+    spec = importlib.util.spec_from_file_location(modname, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load {relpath}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[modname] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_history = _load_page("p3_history", "app_pages/history.py")
+_inspect = _load_page("p3_inspect", "app_pages/inspect_still.py")
+_watch = _load_page("p3_watch", "app_pages/watch.py")
+page_history = _history.page_history
+page_inspect = _inspect.page_inspect
+page_watch = _watch.page_watch
 
 st.set_page_config(
-    page_title="Precint3D",
+    page_title="Precint3D — Operator console",
     page_icon=":material/precision_manufacturing:",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 inject_css()
 
-if "model_path" not in st.session_state:
-    st.session_state.model_path = get_default_model_path()
-
-CAPTIONS = {
-    "Desk": "What this console is, and what it will not pretend to be.",
-    "Inspect": "One photo or a camera. Perception only — no printer writes.",
-    "Job": "Same G-code as the Mega S. Path mask. Pause only if the verifier allows.",
-    "Bench": "Your six stills against the detector. Not a hidden test set.",
-    "Records": "Events written while the loop ran. generate_report() turns them into report.md.",
+# ---- session defaults ------------------------------------------------------
+_defaults = {
+    "model_path": get_default_model_path(),
+    "conf_thresh": 0.15,
+    "iou_thresh": 0.45,
+    "route": "watch",
+    "watch": None,          # dict describing the active watch, or None
+    "watch_folder": None,   # path str
+    "history_selected": None,
 }
+for _k, _v in _defaults.items():
+    st.session_state.setdefault(_k, _v)
+
+# ---- sidebar (brand + 3 nav buttons) --------------------------------------
+NAV = [
+    ("watch", "Watch", "dashboard"),
+    ("inspect", "Inspect", "center_focus_strong"),
+    ("history", "History", "history"),
+]
 
 with st.sidebar:
-    st.markdown("**Detector**")
-    st.session_state.conf_thresh = st.slider("YOLO floor", 0.05, 0.95, 0.15, step=0.01)
-    st.session_state.iou_thresh = st.slider("Box overlap", 0.10, 0.95, 0.45, step=0.01)
-    st.session_state.model_path = st.text_input("Weights", value=st.session_state.model_path)
-    st.caption("Each class also has its own floor. Warping on the frame edge is dropped.")
-    st.divider()
-    st.caption("read_state · set_parameter · pause_print · generate_report")
+    render_sidebar_brand()
+    st.markdown("<div class='p3-nav-label'>Workspace</div>", unsafe_allow_html=True)
+    for _key, _label, _icon in NAV:
+        _selected = st.session_state.route == _key
+        if st.button(
+            _label,
+            key=f"nav_{_key}",
+            icon=f":material/{_icon}:",
+            type="primary" if _selected else "secondary",
+            use_container_width=True,
+        ):
+            if st.session_state.route != _key:
+                st.session_state.route = _key
+                st.rerun()
+    st.markdown("<div style='flex:1'></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='position:fixed;bottom:0.9rem;left:0.95rem;font-size:0.72rem;color:#8B94A3;'>"
+        "<div style='color:#4ECBA3;'>● Safety mode enabled</div>"
+        "<div>Camera-first · No auto actions</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
-page = st.navigation(
-    {
-        "Operate": [
-            st.Page(page_desk, title="Desk", icon=":material/home:"),
-            st.Page(page_inspect, title="Inspect", icon=":material/image:"),
-            st.Page(page_job, title="Job", icon=":material/precision_manufacturing:"),
-        ],
-        "Evidence": [
-            st.Page(page_bench, title="Bench", icon=":material/science:"),
-            st.Page(page_records, title="Records", icon=":material/folder:"),
-        ],
-    },
-    position="top",
-)
-
-st.title(page.title)
-st.caption(CAPTIONS.get(page.title, ""))
-page.run()
+# ---- route to page --------------------------------------------------------
+_route = st.session_state.route
+if _route == "inspect":
+    page_inspect()
+elif _route == "history":
+    page_history()
+else:
+    page_watch()

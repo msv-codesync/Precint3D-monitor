@@ -195,6 +195,33 @@ def test_http_url_rejects_file_scheme():
     with pytest.raises(ValueError):
         http_url("file:///etc/passwd")
     assert http_url("http://octopi.local") == "http://octopi.local"
+    assert http_url("http://192.168.1.20/capture") == "http://192.168.1.20/capture"
+
+
+def test_http_url_rejects_cloud_metadata():
+    from gcode_monitor.net import http_url
+    import pytest
+
+    with pytest.raises(ValueError, match="not a printer"):
+        http_url("http://169.254.169.254/latest/meta-data")
+    with pytest.raises(ValueError, match="not a printer"):
+        http_url("http://metadata.google.internal/")
+
+
+def test_resolve_session_dir_stays_under_jobs(tmp_path):
+    from gcode_monitor.store import resolve_session_dir
+    import pytest
+
+    jobs = tmp_path / "jobs"
+    session = jobs / "20260824-120000_print"
+    session.mkdir(parents=True)
+    assert resolve_session_dir(jobs, session) == session.resolve()
+    with pytest.raises(ValueError):
+        resolve_session_dir(jobs, tmp_path / "outside")
+    hidden = jobs / "_inspect"
+    hidden.mkdir()
+    with pytest.raises(ValueError):
+        resolve_session_dir(jobs, hidden)
 
 
 def test_prusa_layer_change_on_real_file():
@@ -206,4 +233,17 @@ def test_prusa_layer_change_on_real_file():
     assert parsed.layer_count == 15
     assert parsed.layers[0].n_extrude > 0
     assert parsed.layers[0].points
+
+
+def test_judge_image_without_gcode():
+    from gcode_monitor.pipeline import judge_image
+
+    image = Image.new("RGB", (200, 200), (40, 40, 40))
+    names = {0: "spaghetti_failure"}
+    results = [_Result(names, [_Box(0, 0.8, (40, 40, 80, 80))])]
+    sticky = StickyClass(need=1)
+    verdict = judge_image(image, results, sticky, update_sticky=True)
+    assert verdict.name == "spaghetti_failure"
+    assert verdict.sticky_ok is True
+    assert verdict.marked_image.size == (200, 200)
 

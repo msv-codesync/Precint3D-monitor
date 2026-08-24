@@ -70,14 +70,14 @@ def render_job_mode(
     with st.container(border=True):
         st.markdown("**File**")
         st.caption("Use the same Prusa/Cura file that is on the Mega S. Large files are cached after the first read.")
-        file_src = st.pills("G-code", ["Upload file", "Sample square"], default="Upload file") or "Upload file"
+        file_src = st.pills("G-code", ["Sample square", "Upload file"], default="Sample square") or "Sample square"
         if file_src == "Sample square":
             gcode_bytes = SAMPLE.read_bytes()
             gcode_name = SAMPLE.name
         else:
             uploaded = st.file_uploader("G-code", type=["gcode", "gco", "txt"], label_visibility="collapsed")
             if uploaded is None:
-                st.info("Upload the sliced file, then map the path onto a photo of the part.")
+                st.info("Upload the same sliced file the printer is running. Or switch back to Sample square.")
                 return
             gcode_bytes = uploaded.getvalue()
             gcode_name = uploaded.name

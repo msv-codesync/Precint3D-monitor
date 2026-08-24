@@ -106,6 +106,46 @@ def judge_frame(
     )
 
 
+def judge_image(
+    image: Image.Image,
+    results,
+    sticky: StickyClass,
+    *,
+    progress: Progress | None = None,
+    update_sticky: bool = True,
+) -> FrameVerdict:
+    """Live camera with no G-code file. Same detector, no path mask."""
+    image = image.convert("RGB")
+    name, conf, kept, dropped = boxes_from_yolo(results, mask=None, frame_h=image.height)
+    if update_sticky:
+        shown, sticky_ok = sticky.push(name)
+    else:
+        shown, sticky_ok = name, False
+    frac = float(progress.fraction) if progress else 0.0
+    note = progress.extra if progress else "live camera"
+    layer_i = 0
+    if progress is not None and progress.layer_hint is not None:
+        layer_i = int(progress.layer_hint)
+    marked = draw_kept_boxes(image, kept)
+    return FrameVerdict(
+        layer_index=layer_i,
+        layer_z=0.0,
+        progress_pct=frac * 100.0,
+        progress_note=note,
+        name=shown,
+        conf=conf,
+        sticky_ok=sticky_ok,
+        kept=kept,
+        dropped=dropped,
+        path_image=marked,
+        masked_image=image,
+        marked_image=marked,
+        snippet="",
+        extra=progress.source if progress else "camera",
+        raw=kept,
+    )
+
+
 def should_ask_llm(name: str, sticky_ok: bool) -> bool:
     return bool(sticky_ok) and name != "good_print"
 

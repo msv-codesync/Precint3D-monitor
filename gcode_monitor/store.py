@@ -45,6 +45,19 @@ class JobStore:
         shutil.copy2(folder / "print.gcode", dest)
 
 
+def resolve_session_dir(root: Path, selected: str | Path) -> Path:
+    """Return a job folder only if it sits under ``root`` and is a real session."""
+    root = Path(root).resolve()
+    folder = Path(selected).expanduser().resolve()
+    try:
+        folder.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("session is not under jobs/") from exc
+    if folder == root or folder.name.startswith("_") or not folder.is_dir():
+        raise ValueError("not a Precint3D session folder")
+    return folder
+
+
 def list_sessions(root: Path) -> list[dict]:
     root = Path(root)
     if not root.exists():

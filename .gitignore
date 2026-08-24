@@ -12,10 +12,33 @@ jobs/
 runs/
 *.egg-info/
 .idea/
+.vscode/
+.cursor/
 .claude/
 .agents/
 report_assets/
 .pytest_cache/
 .vercel/
-Models/*.pt
+.vercel_python_packages/
+.vercel
 *.zip
+
+# Local-only clutter — not needed to run the console or Vercel web/
+a.txt
+debug_import.py
+iphone_test.py
+AGENTS.md
+HANDBOOK.md
+REPLIT_PROMPT.md
+app_pages/desk.py
+app_pages/bench.py
+app_pages/records.py
+app_pages/inspect.py
+app_pages/job.py
+Code/dataset_setup.py
+Code/prepare_dataset.py
+Code/train_model.py
+Code/train_yolo.py
+
+# Ultralytics base weights. Trained Precint3D detectors (best.pt, best_8hr.pt) are tracked.
+Models/yolo11*.pt

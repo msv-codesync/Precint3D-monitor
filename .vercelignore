@@ -1,0 +1,16 @@
+.venv
+.venv312
+mac_venv
+Dataset
+Models
+jobs
+runs
+*.pt
+requirements.txt
+packages.txt
+runtime.txt
+.streamlit
+__pycache__
+.pytest_cache
+.agents
+.claude
