@@ -48,8 +48,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 inject_css()
-if _ICON.is_file():
-    st.logo(str(_ICON), icon_image=str(_ICON), size="medium")
 
 # ---- session defaults ------------------------------------------------------
 _defaults = {

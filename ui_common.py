@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import os
 
 import streamlit as st
@@ -184,24 +183,18 @@ def inject_css():
             border-bottom: 1px solid var(--p3-sb-line);
             margin-bottom: 0.9rem;
           }
-          .p3-brand .p3-mark {
-            display: block;
-            width: 2.35rem;
-            height: 2.35rem;
-            padding: 0;
-            border: 0;
-            border-radius: 0.55rem;
-            object-fit: cover;
-            flex-shrink: 0;
-            background: transparent;
-          }
-          .p3-brand .p3-title { display: flex; flex-direction: column; gap: 0.15rem; }
-          .p3-brand .p3-name {
+          .p3-name {
             font-family: Syne, sans-serif;
             font-weight: 800;
             font-size: 1.15rem;
             letter-spacing: -0.02em;
             color: var(--p3-sb-ink);
+          }
+          section[data-testid="stSidebar"] [data-testid="stImage"] {
+            margin: 0;
+          }
+          section[data-testid="stSidebar"] [data-testid="stImage"] img {
+            border-radius: 0.55rem;
           }
           .p3-brand .p3-sub {
             font-family: "IBM Plex Sans", sans-serif;
@@ -514,18 +507,14 @@ def inject_css():
 
 def render_sidebar_brand() -> None:
     icon = ROOT / "web" / "brand" / "favicon.png"
-    uri = "data:image/png;base64," + base64.b64encode(icon.read_bytes()).decode("ascii")
-    st.markdown(
-        f"""
-        <div class='p3-brand'>
-          <img class='p3-mark' src='{uri}' alt='Precint3D' width='38' height='38' />
-          <span class='p3-title'>
-            <span class='p3-name'>Precint3D</span>
-          </span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    left, right = st.columns([1, 3.4], vertical_alignment="center")
+    with left:
+        st.image(str(icon), width=42)
+    with right:
+        st.markdown(
+            "<div class='p3-name'>Precint3D</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def render_top_crumb(bay: str = "Bay 01", title: str = "Watch") -> None:
