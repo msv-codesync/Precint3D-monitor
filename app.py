@@ -41,7 +41,7 @@ page_inspect = _inspect.page_inspect
 page_watch = _watch.page_watch
 
 st.set_page_config(
-    page_title="Precint3D — Operator console",
+    page_title="Precint3D",
     page_icon=":material/precision_manufacturing:",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -60,6 +60,17 @@ _defaults = {
 }
 for _k, _v in _defaults.items():
     st.session_state.setdefault(_k, _v)
+
+try:
+    from closed_loop.live import attach_if_running
+
+    if not st.session_state.get("watch"):
+        _live = attach_if_running()
+        if _live:
+            st.session_state.watch = _live
+            st.session_state.watch_folder = str(_live.get("folder") or "")
+except Exception:
+    pass
 
 # ---- sidebar (brand + 3 nav buttons) --------------------------------------
 NAV = [
@@ -83,14 +94,6 @@ with st.sidebar:
             if st.session_state.route != _key:
                 st.session_state.route = _key
                 st.rerun()
-    st.markdown("<div style='flex:1'></div>", unsafe_allow_html=True)
-    st.markdown(
-        "<div style='position:fixed;bottom:0.9rem;left:0.95rem;font-size:0.72rem;color:#8B94A3;'>"
-        "<div style='color:#4ECBA3;'>● Safety mode enabled</div>"
-        "<div>Camera-first · No auto actions</div>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
 
 # ---- route to page --------------------------------------------------------
 _route = st.session_state.route

@@ -15,12 +15,12 @@ import streamlit as st
 from PIL import Image
 
 from actions import pretty as pretty_action
-from gcode_monitor.capture import default_camera_index, list_cameras, open_first_camera
+from gcode_monitor.capture import ProcessWebcam, default_camera_index, list_cameras
 from gcode_monitor.filter import MIN_CONF, keep_box
 from gcode_monitor.mask import draw_kept_boxes
 from gcode_monitor.pipeline import boxes_from_yolo
 from paths import ROOT
-from ui_common import load_model, render_top_crumb
+from ui_common import load_model
 
 INSPECT_DIR = ROOT / "jobs" / "_inspect"
 
@@ -54,21 +54,34 @@ def _run_still(model, image: Image.Image, conf_thresh: float, iou_thresh: float)
 
 
 def _snapshot_camera() -> Image.Image | None:
+    from closed_loop.live import read_run
+    from closed_loop.worker import loop_alive
+
+    if loop_alive():
+        watch = read_run() or {}
+        folder = watch.get("folder")
+        if folder:
+            live = Path(folder) / "live.jpg"
+            if live.exists():
+                try:
+                    with Image.open(live) as img:
+                        return img.convert("RGB")
+                except (OSError, ValueError):
+                    pass
+    idx = int(st.session_state.get("inspect_cam_idx", default_camera_index()))
+    cam = None
     try:
-        cam, idx = open_first_camera(preferred=int(st.session_state.get("inspect_cam_idx", default_camera_index())))
-    except RuntimeError as exc:
-        st.warning(str(exc))
-        return None
-    try:
+        cam = ProcessWebcam(idx)
         return cam.grab()
     except RuntimeError as exc:
         st.warning(str(exc))
         return None
     finally:
-        try:
-            cam.close()
-        except Exception:
-            pass
+        if cam is not None:
+            try:
+                cam.close()
+            except Exception:
+                pass
 
 
 def _persist_inspection(reference: str, image: Image.Image, name: str, conf: float, detail: list[dict]):
@@ -95,66 +108,32 @@ def _persist_inspection(reference: str, image: Image.Image, name: str, conf: flo
 
 
 def page_inspect():
-    render_top_crumb(title="Operator console")
-
-    st.markdown("<div class='p3-eyebrow'>Precint3D / operator view</div>", unsafe_allow_html=True)
-    st.markdown("<div class='p3-hero'>Inspect a still.</div>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='p3-lead'>A deliberate second look, separated from live printer control. "
-        "Upload a photo or use the local camera when hardware is available.</div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown("<div class='p3-hero'>Inspect</div>", unsafe_allow_html=True)
 
     left, right = st.columns([1.6, 1], gap="large")
 
     with right:
         with st.container(border=True):
-            head_l, head_r = st.columns([4, 1], vertical_alignment="center")
-            with head_l:
-                st.markdown("**Operator read**")
-            with head_r:
-                st.markdown(":material/lock:")
-            st.caption("No automatic action is available here.")
-
-            reference = st.text_input(
-                "Reference name",
-                key="inspect_reference",
-                placeholder="e.g. bracket after 3h",
-            )
-
-            st.markdown("**Tolerances**")
+            st.markdown("**Settings**")
+            reference = st.text_input("Reference name", key="inspect_reference")
             st.session_state.setdefault("inspect_conf_thresh", float(st.session_state.get("conf_thresh", 0.15)))
             st.session_state.setdefault("inspect_iou_thresh", float(st.session_state.get("iou_thresh", 0.45)))
-            st.slider("Confidence floor", 0.05, 0.95, key="inspect_conf_thresh", step=0.01)
-            st.slider("Box overlap (IoU)", 0.10, 0.95, key="inspect_iou_thresh", step=0.01)
-
+            st.slider("Confidence", 0.05, 0.95, key="inspect_conf_thresh", step=0.01)
+            st.slider("IoU", 0.10, 0.95, key="inspect_iou_thresh", step=0.01)
             record = st.button(
-                "Record inspection",
+                "Save",
                 type="primary",
                 icon=":material/save:",
                 use_container_width=True,
                 key="inspect_record",
             )
 
-        with st.container(border=True):
-            st.markdown(":material/warning: **Hard boundary**")
-            st.caption(
-                "A photo can create evidence, never a pause. Review the image yourself before "
-                "making any printer decision."
-            )
-
     with left:
         with st.container(border=True):
-            head_l, head_r = st.columns([4, 1], vertical_alignment="center")
-            with head_l:
-                st.markdown("**Inspection frame**")
-            with head_r:
-                st.markdown(":material/image:")
-            st.caption("Local media stays in this browser until you submit a finding.")
-
+            st.markdown("**Frame**")
             mode = st.radio(
                 "Source",
-                ["Upload", "Local camera"],
+                ["Upload", "Camera"],
                 horizontal=True,
                 key="inspect_source",
                 label_visibility="collapsed",
@@ -163,7 +142,7 @@ def page_inspect():
             image: Image.Image | None = None
             if mode == "Upload":
                 uploaded = st.file_uploader(
-                    "Drop a print photo here",
+                    "Photo",
                     type=["jpg", "jpeg", "png", "bmp"],
                     key="inspect_upload",
                     label_visibility="collapsed",
@@ -174,24 +153,12 @@ def page_inspect():
                     except (OSError, ValueError) as exc:
                         st.error(f"Could not read image: {exc}")
                 else:
-                    with st.container(horizontal_alignment="center"):
-                        st.markdown(":material/upload:")
-                        st.markdown("**Drop a print photo here**")
-                        st.caption(
-                            "Or choose a local image. Precint3D never assumes a still "
-                            "is permission to control the printer."
-                        )
+                    st.markdown("**No photo**")
             else:
                 catalog = st.session_state.get("cam_catalog")
                 if not catalog:
-                    catalog = list_cameras()
+                    catalog = list_cameras(probe=False)
                     st.session_state.cam_catalog = catalog
-                find_l, find_r = st.columns([3, 1], vertical_alignment="bottom")
-                with find_r:
-                    if st.button("Find cameras", icon=":material/search:", key="inspect_probe"):
-                        st.session_state.cam_catalog = list_cameras(probe=True)
-                        catalog = st.session_state.cam_catalog
-                        st.rerun()
                 if catalog:
                     labels = [
                         f"{c['name']}" + (" · iPhone" if c.get("preferred") else "")
@@ -199,17 +166,20 @@ def page_inspect():
                     ]
                     pref = default_camera_index(catalog)
                     default_pos = next((i for i, c in enumerate(catalog) if c["index"] == pref), 0)
-                    with find_l:
-                        choice = st.selectbox("Camera", labels, index=default_pos, key="inspect_cam_label")
+                    if st.session_state.get("inspect_cam_idx") is not None:
+                        default_pos = next(
+                            (i for i, c in enumerate(catalog) if c["index"] == int(st.session_state.inspect_cam_idx)),
+                            default_pos,
+                        )
+                    if "inspect_cam_label" not in st.session_state or st.session_state.inspect_cam_label not in labels:
+                        st.session_state.inspect_cam_label = labels[default_pos]
+                    choice = st.selectbox("Camera", labels, key="inspect_cam_label")
                     picked = catalog[labels.index(choice)]
                     st.session_state.inspect_cam_idx = int(picked["index"])
-                    st.caption(
-                        "Unlock your iPhone nearby so Continuity Camera appears in this list."
-                    )
                 else:
-                    st.warning("No camera opened. Unlock the iPhone, then click Find cameras.")
+                    st.warning("No camera listed.")
                     st.session_state.inspect_cam_idx = 0
-                if st.button("Take snapshot", type="primary", icon=":material/photo_camera:", key="inspect_shot"):
+                if st.button("Snapshot", type="primary", icon=":material/photo_camera:", key="inspect_shot"):
                     snap = _snapshot_camera()
                     if snap is not None:
                         st.session_state["inspect_snap_bytes"] = _image_to_bytes(snap)
@@ -223,7 +193,7 @@ def page_inspect():
                 except FileNotFoundError as exc:
                     st.error(str(exc))
                     return
-                with st.spinner("Looking at the photo…"):
+                with st.spinner("Inspecting"):
                     name, conf, kept, dropped, marked, detail = _run_still(
                         model,
                         image,
@@ -235,13 +205,10 @@ def page_inspect():
                 action = pretty_action(name)
                 color = {"ok": "green", "warning": "orange", "critical": "red"}[action["severity"]]
                 st.markdown(
-                    f":{color}-badge[{action['label'].upper()}] · {int(conf * 100)}% confidence · "
-                    f"dropped {dropped} box(es) below floor"
+                    f":{color}-badge[{action['label'].upper()}] · {int(conf * 100)}%"
                 )
-                st.caption(action["what_to_do"])
 
                 if detail:
-                    st.markdown("<div class='p3-eyebrow' style='margin-top:0.6rem;'>Tolerances</div>", unsafe_allow_html=True)
                     st.dataframe(
                         [
                             {
@@ -259,12 +226,7 @@ def page_inspect():
 
                 if record:
                     folder = _persist_inspection(reference, image, name, conf, detail)
-                    st.toast(f"Saved to {folder.name}", icon=":material/save:")
-
-    with st.expander(":material/help: Hardware unavailable?"):
-        st.caption(
-            "The upload path above is the intended fallback. Camera permission is optional and never blocks still inspection."
-        )
+                    st.toast(f"Saved {folder.name}", icon=":material/save:")
 
 
 def _image_to_bytes(image: Image.Image) -> bytes:

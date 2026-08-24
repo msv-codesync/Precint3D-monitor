@@ -51,6 +51,45 @@ def ping_octoprint(url: str, api_key: str, timeout: float = 2.0) -> tuple[bool, 
     return False, f"HTTP {resp.status_code}"
 
 
+def read_octoprint_temps(url: str, api_key: str, timeout: float = 3.0) -> tuple[float | None, float | None]:
+    """Live hotend / bed from OctoPrint. Missing keys stay None — never invented."""
+    if not (url or "").strip() or not (api_key or "").strip():
+        return None, None
+    try:
+        base = http_url(url)
+        resp = requests.get(
+            f"{base}/api/printer",
+            headers={"X-Api-Key": api_key},
+            timeout=timeout,
+        )
+    except (requests.RequestException, ValueError):
+        return None, None
+    if not (200 <= resp.status_code < 300):
+        return None, None
+    try:
+        data = resp.json()
+    except ValueError:
+        return None, None
+    temps = data.get("temperature") or {}
+    tool = temps.get("tool0") or temps.get("tool") or {}
+    bed = temps.get("bed") or {}
+    hotend = tool.get("target")
+    if hotend is None:
+        hotend = tool.get("actual")
+    bed_t = bed.get("target")
+    if bed_t is None:
+        bed_t = bed.get("actual")
+    try:
+        hotend_f = float(hotend) if hotend is not None else None
+    except (TypeError, ValueError):
+        hotend_f = None
+    try:
+        bed_f = float(bed_t) if bed_t is not None else None
+    except (TypeError, ValueError):
+        bed_f = None
+    return hotend_f, bed_f
+
+
 def send_octoprint_command(url: str, api_key: str, command: str, timeout: float = 5.0) -> tuple[int, str]:
     if not (api_key or "").strip():
         raise ValueError("OctoPrint API key is required.")

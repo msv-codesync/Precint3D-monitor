@@ -13,7 +13,6 @@ from actions import pretty as pretty_action
 from gcode_monitor.store import resolve_session_dir
 from paths import ROOT
 from tool_api.service import generate_report
-from ui_common import render_top_crumb
 
 JOBS_ROOT = ROOT / "jobs"
 
@@ -59,7 +58,7 @@ def _summarise(folder: Path, active_folder: str | None) -> dict:
         "name": meta.get("filename") or folder.name,
         "started": started_display,
         "frames": len(frame_events),
-        "finding_label": finding["label"] if frame_events else "Waiting for evidence",
+        "finding_label": finding["label"] if frame_events else "None",
         "finding_sev": finding["severity"] if frame_events else "ok",
         "confidence": last.get("conf", 0.0),
         "status": "WATCHING" if is_active else "STOPPED",
@@ -95,14 +94,13 @@ def _row_html(row: dict) -> str:
                 gap:1rem;padding:0.9rem 1rem;border-top:1px solid #E5E7EB;align-items:center;'>
       <div>
         <div style='font-weight:600;color:#1A1D23;'>{html.escape(str(row['name']))}</div>
-        <div style='color:#6B7280;font-size:0.82rem;'>camera source</div>
       </div>
       <div>
         <div style='color:#1A1D23;display:flex;align-items:center;gap:0.5rem;'>
           <span style='width:8px;height:8px;border-radius:50%;background:{dot};display:inline-block;'></span>
           {html.escape(str(row['finding_label']))}
         </div>
-        <div style='color:#6B7280;font-size:0.82rem;'>{conf_pct}% confidence</div>
+        <div style='color:#6B7280;font-size:0.82rem;'>{conf_pct}%</div>
       </div>
       <div style='color:#4B5259;'>{html.escape(str(row['frames']))} frames</div>
       <div style='color:#4B5259;'>{html.escape(str(row['started']))}</div>
@@ -117,20 +115,13 @@ def _row_html(row: dict) -> str:
 
 
 def page_history():
-    render_top_crumb(title="Operator console")
-
     left, right = st.columns([2.4, 1], vertical_alignment="center")
     with left:
-        st.markdown("<div class='p3-eyebrow'>Precint3D / operator view</div>", unsafe_allow_html=True)
-        st.markdown("<div class='p3-hero'>Watch history.</div>", unsafe_allow_html=True)
-        st.markdown(
-            "<div class='p3-lead'>Past watch records, findings, and the evidence behind every operator decision.</div>",
-            unsafe_allow_html=True,
-        )
+        st.markdown("<div class='p3-hero'>History</div>", unsafe_allow_html=True)
     with right:
         with st.container(horizontal=True, horizontal_alignment="right"):
             if st.button(
-                "Inspect a still",
+                "Inspect",
                 icon=":material/center_focus_strong:",
                 key="hist_go_inspect",
             ):
@@ -142,7 +133,7 @@ def page_history():
         with st.container(border=True):
             st.markdown(
                 "<div style='padding:1.5rem;text-align:center;color:#6B7280;'>"
-                "No watch sessions yet. Start a watch to build up evidence.</div>",
+                "No sessions</div>",
                 unsafe_allow_html=True,
             )
         return
@@ -150,8 +141,7 @@ def page_history():
     with st.container(border=True):
         st.markdown(
             "<div style='padding:0.9rem 1rem 0.7rem;'>"
-            "<div style='font-weight:600;color:#1A1D23;'>Recent records</div>"
-            f"<div style='color:#6B7280;font-size:0.82rem;'>{len(rows)} watch sessions in the current view</div>"
+            f"<div style='font-weight:600;color:#1A1D23;'>{len(rows)} sessions</div>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -160,7 +150,7 @@ def page_history():
             "<div style='display:grid;grid-template-columns:2.4fr 1.6fr 1fr 1fr 1fr;"
             "gap:1rem;padding:0.55rem 1rem;color:#6B7280;font-size:0.72rem;"
             "letter-spacing:0.14em;text-transform:uppercase;border-top:1px solid #E5E7EB;'>"
-            "<div>Print / source</div><div>Finding</div><div>Evidence</div><div>Started</div><div>Status</div>"
+            "<div>Print</div><div>Finding</div><div>Frames</div><div>Started</div><div>Status</div>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -197,7 +187,7 @@ def page_history():
         st.session_state.history_selected = None
         return
 
-    st.markdown("<div class='p3-eyebrow' style='margin-top:1.4rem;'>Session detail</div>", unsafe_allow_html=True)
+    st.markdown("<div class='p3-eyebrow' style='margin-top:1.4rem;'>Session</div>", unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown(f"**{html.escape(folder.name)}**")
         events = _read_events(folder)

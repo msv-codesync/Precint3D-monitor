@@ -518,7 +518,6 @@ def render_sidebar_brand() -> None:
           <span class='p3-mark'>P3D</span>
           <span class='p3-title'>
             <span class='p3-name'>Precint3D</span>
-            <span class='p3-sub'>Operator console</span>
           </span>
         </div>
         """,
@@ -526,16 +525,11 @@ def render_sidebar_brand() -> None:
     )
 
 
-def render_top_crumb(bay: str = "Bay 01", title: str = "Operator console") -> None:
+def render_top_crumb(bay: str = "Bay 01", title: str = "Watch") -> None:
     st.markdown(
         f"""
-        <div style='display:flex;justify-content:space-between;align-items:center;
-                    margin:0 0 0.55rem;padding-bottom:0.55rem;border-bottom:1px solid var(--p3-line);'>
-          <div>
-            <div class='p3-crumbs'>Print floor / {bay}</div>
-            <div style='font-weight:600;font-size:0.95rem;color:var(--p3-ink);margin-top:0.15rem;'>{title}</div>
-          </div>
-          <div class='p3-status-dot'>System ready</div>
+        <div style='margin:0 0 0.55rem;padding-bottom:0.55rem;border-bottom:1px solid var(--p3-line);'>
+          <div style='font-weight:600;font-size:0.95rem;color:var(--p3-ink);'>{title}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -552,8 +546,6 @@ def render_finding(name: str, conf: float, extra: str | None = None):
         st.metric("Confidence", f"{conf * 100:.0f}%", border=True)
         if extra:
             st.caption(extra)
-        st.markdown("**What to do**")
-        st.write(action["what_to_do"])
 
 
 def live_panel(info_box, image_box, marked, name, conf, extra=None):
@@ -563,6 +555,6 @@ def live_panel(info_box, image_box, marked, name, conf, extra=None):
     info_box.markdown(
         f"**{action['label']}**\n\n"
         f":{color}-badge[{level}] · {conf * 100:.0f}% sure\n\n"
-        f"{action['what_to_do']}{extra_line}"
+        f"{extra_line}"
     )
     image_box.image(marked, width="stretch")

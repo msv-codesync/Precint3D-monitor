@@ -16,7 +16,15 @@ from PIL import Image
 from actions import pretty as pretty_action
 from agent_loop.cycle import cycle
 from agent_loop.memory import DecisionMemory
-from gcode_monitor.capture import PersistentWebcam, default_camera_index, from_esp32, list_cameras
+from closed_loop.live import attach_if_running, read_run, read_status, write_run
+from closed_loop.worker import loop_alive, start_worker, stop_worker
+from gcode_monitor.capture import (
+    ProcessWebcam,
+    default_camera_index,
+    from_esp32,
+    kill_stray_camera_workers,
+    list_cameras,
+)
 from gcode_monitor.filter import StickyClass
 from gcode_monitor.parse import parse_gcode
 from gcode_monitor.pipeline import judge_frame, judge_image
@@ -24,7 +32,8 @@ from gcode_monitor.progress import Progress, from_manual, from_marlin_sd, from_o
 from gcode_monitor.store import JobStore, list_sessions
 from paths import ROOT
 from printer_ops import apply_parameter, bounds_for, ping_octoprint, request_pause
-from ui_common import load_model, render_top_crumb
+from tool_api.types import Observation
+from ui_common import load_model
 
 
 def _image_data_uri(image: Image.Image, quality: int = 82) -> str:
@@ -44,15 +53,15 @@ def _render_camera_frame(
     tag = html.escape((cam_name or f"CAM 0{cam_idx}").upper())
     if len(tag) > 28:
         tag = tag[:28]
-    overlay = f"{tag} / OBSERVE ONLY"
+    overlay = tag
     if image is None:
         st.markdown(
             f"""
             <div class='p3-cam-frame empty'>
               <div class='p3-cam-ov tl'>{overlay}</div>
               <div class='p3-cam-ov tr'>LIVE · {live_str}</div>
-              <div class='p3-cam-ov bl'>RECORDING VISUAL EVIDENCE</div>
-              <div class='p3-cam-ov br'>{conf_pct}% confidence</div>
+              <div class='p3-cam-ov bl'></div>
+              <div class='p3-cam-ov br'>{conf_pct}%</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -65,8 +74,8 @@ def _render_camera_frame(
           <img src="{uri}" />
           <div class='p3-cam-ov tl'>{overlay}</div>
           <div class='p3-cam-ov tr'>LIVE · {live_str}</div>
-          <div class='p3-cam-ov bl'>RECORDING VISUAL EVIDENCE</div>
-          <div class='p3-cam-ov br'>{conf_pct}% confidence</div>
+          <div class='p3-cam-ov bl'></div>
+          <div class='p3-cam-ov br'>{conf_pct}%</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -140,7 +149,7 @@ def _kpis(active: bool) -> dict[str, str]:
         "active": "1" if active else "0",
         "checked": str(week_count),
         "critical": str(critical),
-        "uptime": f"{hours:.1f}h" if hours else "—",
+        "uptime": f"{hours:.1f}h" if hours else "0h",
     }
 
 
@@ -163,31 +172,41 @@ def _refresh_cameras(*, probe: bool = False) -> list[dict]:
     return catalog
 
 
-def _pick_camera_ui(*, key: str, help_find_key: str) -> tuple[int, str]:
+def _hard_close_camera() -> None:
+    """Kill the camera child process so the Mac LED can actually go off."""
+    st.session_state["_wp_cam_hold"] = True
+    cam = st.session_state.get("_wp_cam")
+    if cam is not None:
+        try:
+            cam.close()
+        except Exception:
+            pass
+    st.session_state.pop("_wp_cam", None)
+    kill_stray_camera_workers()
+
+
+def _pick_camera_ui(
+    *,
+    key: str,
+    current_index: int | None = None,
+) -> tuple[int, str]:
     catalog = st.session_state.get("cam_catalog")
     if not catalog:
-        with st.spinner("Looking for cameras…"):
-            catalog = _refresh_cameras()
-    c1, c2 = st.columns([3, 1], vertical_alignment="bottom")
-    with c2:
-        if st.button("Find cameras", icon=":material/search:", key=help_find_key):
-            with st.spinner("Looking for cameras…"):
-                catalog = _refresh_cameras(probe=True)
-                st.rerun()
+        catalog = _refresh_cameras(probe=False)
     if not catalog:
-        with c1:
-            st.warning("No camera opened. Unlock your iPhone nearby, then click Find cameras.")
+        st.warning("No camera listed.")
         return 0, "Camera 0"
     labels = [_camera_label(cam) for cam in catalog]
     pref = default_camera_index(catalog)
     default_pos = next((i for i, cam in enumerate(catalog) if cam["index"] == pref), 0)
-    with c1:
-        choice = st.selectbox("Camera", labels, index=default_pos, key=key)
+    if current_index is not None:
+        current_pos = next((i for i, cam in enumerate(catalog) if cam["index"] == int(current_index)), default_pos)
+    else:
+        current_pos = default_pos
+    if key not in st.session_state or st.session_state.get(key) not in labels:
+        st.session_state[key] = labels[current_pos]
+    choice = st.selectbox("Camera", labels, key=key)
     picked = catalog[labels.index(choice)]
-    st.caption(
-        "iPhone uses Continuity Camera. Unlock the phone, keep it nearby, and turn on "
-        "Continuity Camera in System Settings → General → AirPlay & Continuity."
-    )
     return int(picked["index"]), str(picked["name"])
 
 
@@ -196,12 +215,7 @@ def _pick_camera_ui(*, key: str, help_find_key: str) -> tuple[int, str]:
 # ---------------------------------------------------------------------------
 
 def _reset_watch_runtime():
-    old = st.session_state.get("_wp_cam")
-    if old is not None:
-        try:
-            old.close()
-        except Exception:
-            pass
+    _hard_close_camera()
     for k in (
         "_wp_cam",
         "_wp_sticky",
@@ -215,20 +229,21 @@ def _reset_watch_runtime():
         "_wp_ping",
         "_wp_last_progress",
         "_wp_progress_error",
+        "_wp_cam_hold",
+        "_wp_force_cam",
     ):
         st.session_state.pop(k, None)
 
 
-@st.dialog("Start a camera watch")
+@st.dialog("Start watch")
 def _start_watch_dialog():
-    st.caption("Observation only until you explicitly decide otherwise.")
-
     st.session_state.setdefault("new_name", "")
     st.session_state.setdefault("new_link", "Camera only")
     st.session_state.setdefault("new_octo_url", "")
     st.session_state.setdefault("new_octo_key", "")
-    st.session_state.setdefault("new_pause", False)
-    st.session_state.setdefault("new_auto_pause", False)
+    st.session_state.setdefault("new_pause", True)
+    st.session_state.setdefault("new_auto_pause", True)
+    st.session_state.setdefault("new_auto_nudge", True)
     st.session_state.setdefault("new_cam_kind", "Local camera")
     st.session_state.setdefault("new_esp_url", "http://192.168.1.20/capture")
     st.session_state.setdefault("new_port", "/dev/tty.usbmodem1101")
@@ -236,11 +251,7 @@ def _start_watch_dialog():
     st.session_state.setdefault("new_gcode_src", "None")
     st.session_state.setdefault("new_sticky_need", STICKY_NEED)
 
-    name = st.text_input("Print name", key="new_name", placeholder="e.g. hinge prototype / PLA")
-
-    with st.container(border=True):
-        st.markdown(":material/videocam: **Camera-first**")
-        st.caption("A watch never writes to the printer by itself. Pause still needs the verifier.")
+    name = st.text_input("Print name", key="new_name")
 
     with st.expander("Camera", expanded=True):
         cam_kind = st.radio(
@@ -251,11 +262,11 @@ def _start_watch_dialog():
         )
         cam_idx, cam_name = 0, "Camera 0"
         if cam_kind == "Local camera":
-            cam_idx, cam_name = _pick_camera_ui(key="new_cam_label", help_find_key="dlg_find_cam")
+            cam_idx, cam_name = _pick_camera_ui(key="new_cam_label")
         else:
             st.text_input("ESP32 capture URL", key="new_esp_url")
 
-    with st.expander("Printer — optional, needed for pause and progress"):
+    with st.expander("Printer"):
         link = st.radio(
             "Printer link",
             ["Camera only", "OctoPrint", "Mega S USB"],
@@ -269,21 +280,13 @@ def _start_watch_dialog():
             s1, s2 = st.columns(2)
             s1.text_input("Serial port", key="new_port")
             s2.number_input("Baud", key="new_baud", step=1)
-            st.caption("Keep this closed if OctoPrint already owns the USB port.")
         if link != "Camera only":
-            st.checkbox(
-                "Allow pause after a held critical finding",
-                key="new_pause",
-                help="Request pause still runs verify_proposal. Camera-only never writes.",
-            )
-            st.checkbox(
-                "Auto-pause when the verifier ALLOW pause",
-                key="new_auto_pause",
-                help="Same gate as Job: accept and command == pause. Off by default.",
-            )
-        st.slider("Same finding this many frames before it is held", 1, 6, key="new_sticky_need")
+            st.checkbox("Allow pause", key="new_pause")
+            st.checkbox("Auto-pause", key="new_auto_pause")
+            st.checkbox("Auto-nudge", key="new_auto_nudge")
+        st.slider("Hold after frames", 1, 6, key="new_sticky_need")
         gcode_src = st.radio(
-            "G-code (path mask + layer)",
+            "G-code",
             ["None", "Sample square", "Upload file"],
             horizontal=True,
             key="new_gcode_src",
@@ -346,6 +349,7 @@ def _start_watch_dialog():
         "baud": int(st.session_state.new_baud or 250000),
         "pause_allowed": bool(st.session_state.new_pause) and can_write,
         "auto_pause": bool(st.session_state.new_auto_pause) and can_write,
+        "auto_nudge": bool(st.session_state.new_auto_nudge) and can_write,
         "sticky_need": int(st.session_state.new_sticky_need or STICKY_NEED),
         "gcode_name": gcode_name if gcode_bytes else "",
         "has_gcode": bool(gcode_bytes),
@@ -353,12 +357,17 @@ def _start_watch_dialog():
         "folder": str(folder),
         "frames": 0,
         "pause_sent": False,
+        "model_path": str(st.session_state.model_path),
+        "conf_thresh": float(st.session_state.conf_thresh),
+        "iou_thresh": float(st.session_state.iou_thresh),
     }
+    stop_worker()
     st.session_state.watch = watch
     st.session_state.watch_folder = str(folder)
     _reset_watch_runtime()
     st.session_state.watch_events = []
     st.session_state.watch_started_at = time.time()
+    start_worker(watch)
     st.rerun()
 
 
@@ -366,9 +375,11 @@ def _start_watch_dialog():
 # Watch runtime helpers
 # ---------------------------------------------------------------------------
 
-def _get_camera(watch: dict) -> PersistentWebcam | None:
+def _get_camera(watch: dict) -> ProcessWebcam | None:
+    if st.session_state.get("_wp_cam_hold"):
+        return None
     want = int(watch.get("cam_idx", 0))
-    cam: PersistentWebcam | None = st.session_state.get("_wp_cam")
+    cam = st.session_state.get("_wp_cam")
     if cam is not None and getattr(cam, "index", None) == want and getattr(cam, "cap", None) is not None:
         return cam
     if cam is not None:
@@ -378,7 +389,7 @@ def _get_camera(watch: dict) -> PersistentWebcam | None:
             pass
         st.session_state.pop("_wp_cam", None)
     try:
-        cam = PersistentWebcam(want)
+        cam = ProcessWebcam(want)
     except (RuntimeError, ValueError):
         return None
     st.session_state["_wp_cam"] = cam
@@ -468,12 +479,8 @@ def _close_watch(reason: str = "manual stop"):
             store.append_event(folder, {"t": datetime.now().isoformat(), "kind": "watch_stopped", "reason": reason})
         except OSError:
             pass
-    cam: PersistentWebcam | None = st.session_state.get("_wp_cam")
-    if cam is not None:
-        try:
-            cam.close()
-        except Exception:
-            pass
+    stop_worker()
+    _hard_close_camera()
     for k in (
         "watch",
         "watch_folder",
@@ -491,6 +498,8 @@ def _close_watch(reason: str = "manual stop"):
         "_wp_ping",
         "_wp_last_progress",
         "_wp_progress_error",
+        "_wp_cam_hold",
+        "_wp_force_cam",
     ):
         st.session_state.pop(k, None)
 
@@ -502,17 +511,7 @@ def _close_watch(reason: str = "manual stop"):
 def _hero(active: bool):
     left, right = st.columns([2.2, 1], vertical_alignment="center")
     with left:
-        st.markdown("<div class='p3-eyebrow'>Live print view</div>", unsafe_allow_html=True)
-        st.markdown(
-            "<div class='p3-hero'>Watch the print.<br/>"
-            "<span class='accent'>Trust the evidence.</span></div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            "<div class='p3-lead'>A calm read on what the camera sees, with a hard "
-            "boundary between observation and printer control.</div>",
-            unsafe_allow_html=True,
-        )
+        st.markdown("<div class='p3-hero'>Watch</div>", unsafe_allow_html=True)
     with right:
         with st.container(horizontal=True, horizontal_alignment="right"):
             if active:
@@ -525,7 +524,7 @@ def _hero(active: bool):
                     st.rerun()
             else:
                 if st.button(
-                    "Start a watch",
+                    "Start watch",
                     type="primary",
                     icon=":material/play_arrow:",
                     key="btn_start_watch_hero",
@@ -535,10 +534,10 @@ def _hero(active: bool):
 
 def _kpi_row(k: dict, active: bool):
     labels = [
-        ("Active watches", k["active"], "camera feeds running", active),
-        ("Prints checked", k["checked"], "this week", False),
-        ("Critical findings", k["critical"], "requiring review", False),
-        ("Watch hours", k["uptime"], "logged this month", False),
+        ("Active", k["active"], "", active),
+        ("Prints", k["checked"], "", False),
+        ("Critical", k["critical"], "", False),
+        ("Hours", k["uptime"], "", False),
     ]
     with st.container(horizontal=True):
         for eyebrow, value, sub, is_active in labels:
@@ -560,13 +559,7 @@ def _render_evidence_timeline(events: list[dict]):
     with st.container(border=True):
         head_l, head_r = st.columns([4, 1], vertical_alignment="center")
         with head_l:
-            st.markdown(
-                "<div style='padding:0.3rem 0.15rem;'>"
-                "<div style='font-weight:600;color:var(--p3-ink);'>Repeated visual evidence</div>"
-                "<div style='color:var(--p3-muted);font-size:0.82rem;'>Confidence builds across independent frames.</div>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown("**Frames**")
         with head_r:
             st.markdown(
                 f"<div style='text-align:right;'><span class='p3-pill mute'>{len(frame_events)} FRAMES</span></div>",
@@ -577,8 +570,8 @@ def _render_evidence_timeline(events: list[dict]):
             st.markdown(
                 "<div class='p3-evidence-row'>"
                 "<div class='p3-evidence-dot'></div>"
-                "<div class='p3-evidence-time'>—</div>"
-                "<div class='p3-evidence-text'>No findings recorded yet. The camera is warming up.</div>"
+                "<div class='p3-evidence-time'></div>"
+                "<div class='p3-evidence-text'>No frames yet</div>"
                 "</div>",
                 unsafe_allow_html=True,
             )
@@ -598,7 +591,7 @@ def _render_evidence_timeline(events: list[dict]):
                 f"""
                 <div class='p3-evidence-row'>
                   <div class='p3-evidence-dot {dot_cls}'></div>
-                  <div class='p3-evidence-time'>{clock} · {conf_pct}% confidence</div>
+                  <div class='p3-evidence-time'>{clock} · {conf_pct}%</div>
                   <div class='p3-evidence-text'>{html.escape(action['label'])}</div>
                   <div class='p3-evidence-badge {badge_cls}'>{label}</div>
                 </div>
@@ -607,31 +600,55 @@ def _render_evidence_timeline(events: list[dict]):
             )
 
 
+def _live_outcome() -> dict:
+    status = read_status()
+    record = status.get("record") or st.session_state.get("_wp_last_verdict") or {}
+    gate_d = status.get("gate") or {}
+    obs = None
+    raw = status.get("observation")
+    if isinstance(raw, dict):
+        try:
+            obs = Observation(**raw)
+        except TypeError:
+            obs = None
+    gate = None
+    if gate_d:
+        gate = type(
+            "Gate",
+            (),
+            {
+                "accept": bool(gate_d.get("accept")),
+                "command": gate_d.get("command") or "none",
+                "label": gate_d.get("label") or "",
+                "reasons": list(gate_d.get("reasons") or []),
+            },
+        )()
+    return {"record": record, "gate": gate, "observation": obs, "status": status}
+
+
 def _octo_status(watch: dict) -> tuple[bool, str]:
     if watch.get("link") == "Mega S USB":
-        return bool(watch.get("port")), "USB · PORT SET" if watch.get("port") else "USB · NO PORT"
+        return bool(watch.get("port")), "USB" if watch.get("port") else "NO PORT"
     if watch.get("link") != "OctoPrint":
-        return False, "OFFLINE · CAMERA STILL AVAILABLE"
+        return False, "OFFLINE"
     now = time.time()
     cache = st.session_state.get("_wp_ping")
     if isinstance(cache, dict) and now - float(cache.get("t") or 0) < 10:
         return bool(cache.get("ok")), str(cache.get("label") or "UNREACHABLE")
     ok, label = ping_octoprint(watch.get("octo_url") or "", watch.get("octo_key") or "")
     if ok:
-        label = "ONLINE · READY"
+        label = "ONLINE"
     elif label == "NO API KEY":
-        label = "URL SET · NO API KEY"
+        label = "NO API KEY"
     elif label == "NO URL":
-        label = "OFFLINE · CAMERA STILL AVAILABLE"
-    else:
-        label = f"{label} · CAMERA STILL AVAILABLE"
+        label = "OFFLINE"
     st.session_state["_wp_ping"] = {"t": now, "ok": ok, "label": label}
     return ok, label
 
 
 def _apply_pause(watch: dict, *, kind: str) -> bool:
-    outcome = st.session_state.get("_wp_last_outcome") or {}
-    record = outcome.get("record") or st.session_state.get("_wp_last_verdict") or {}
+    outcome = _live_outcome()
+    record = outcome.get("record") or {}
     result = request_pause(
         link=watch.get("link") or "",
         url=watch.get("octo_url") or "",
@@ -661,6 +678,7 @@ def _apply_pause(watch: dict, *, kind: str) -> bool:
     if result.ok:
         watch["pause_sent"] = True
         st.session_state.watch = watch
+        write_run(watch)
         st.toast(result.message, icon=":material/pause:")
         return True
     st.error(result.message)
@@ -669,16 +687,15 @@ def _apply_pause(watch: dict, *, kind: str) -> bool:
 
 def _render_printer_boundary(watch: dict):
     reachable, state_label = _octo_status(watch)
-    printer_name = html.escape(str(watch.get("printer_name") or "Bench printer"))
+    printer_name = html.escape(str(watch.get("printer_name") or watch.get("link") or "Printer"))
     can_write = watch.get("link") in ("OctoPrint", "Mega S USB") and watch.get("pause_allowed")
     octo_ready = watch.get("link") == "OctoPrint" and reachable
     with st.container(border=True):
         head_l, head_r = st.columns([4, 1], vertical_alignment="center")
         with head_l:
-            st.markdown("**Printer boundary**")
+            st.markdown("**Printer**")
         with head_r:
-            st.markdown(":material/lock:")
-        st.caption("Actions stay opt-in.")
+            st.markdown(":material/print:")
 
         printer_row_l, printer_row_r = st.columns([1, 6], vertical_alignment="center")
         with printer_row_l:
@@ -691,17 +708,7 @@ def _render_printer_boundary(watch: dict):
                 unsafe_allow_html=True,
             )
 
-        st.markdown(
-            f"""
-            <div class='p3-subcard' style='margin:0.75rem 0 0.85rem;'>
-              <div class='title'>{'Pause available' if can_write else 'No printer control active'}</div>
-              <div class='sub'>{'Pause only if verify_proposal ALLOW pause after a held critical finding.' if can_write else 'Watching and inspection can continue without a connected printer.'}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        outcome = st.session_state.get("_wp_last_outcome") or {}
+        outcome = _live_outcome()
         gate = outcome.get("gate")
         can_pause = (
             can_write
@@ -714,7 +721,7 @@ def _render_printer_boundary(watch: dict):
             can_pause = False
 
         if st.button(
-            "Request pause",
+            "Pause",
             icon=":material/pause:",
             disabled=not can_pause,
             use_container_width=True,
@@ -722,24 +729,21 @@ def _render_printer_boundary(watch: dict):
         ):
             _apply_pause(watch, kind="operator")
 
-        need = int(watch.get("sticky_need") or STICKY_NEED)
-        st.caption(f"Requires the same finding on {need} frames in a row, then verify_proposal ALLOW pause.")
-
         if octo_ready:
             last = outcome.get("record") or {}
-            with st.expander("Nudge parameter (safe bounds)"):
+            with st.expander("Nudge"):
                 p = st.selectbox("Parameter", ["hotend", "bed", "feedrate"], key="np_param")
                 lo, hi = bounds_for(p)
                 default = (lo + hi) / 2
                 value = st.number_input(
-                    f"{p} ({lo:g}–{hi:g})",
+                    f"{p} ({lo:g}-{hi:g})",
                     min_value=float(lo),
                     max_value=float(hi),
                     value=float(default),
                     step=1.0,
                     key=f"np_val_{p}",
                 )
-                confirm = st.checkbox("I confirm this change", key=f"np_ok_{p}")
+                confirm = st.checkbox("Confirm", key=f"np_ok_{p}")
                 if st.button(
                     "Send nudge",
                     key="np_send",
@@ -771,23 +775,6 @@ def _render_printer_boundary(watch: dict):
                         st.toast(result.message, icon=":material/check:")
                     else:
                         st.error(result.message)
-
-
-def _render_safety_panel():
-    with st.container(border=True):
-        head_l, head_r = st.columns([4, 1], vertical_alignment="center")
-        with head_l:
-            st.markdown("**Safety boundary**")
-        with head_r:
-            st.markdown(":material/shield:")
-        st.caption("What Precint3D will not do.")
-        bullets = [
-            "Camera-only by default. A watch never changes printer state by itself.",
-            "One frame is never enough. Findings need repeated visual evidence.",
-            "Pause is an explicit, confirmed operator request. Resume is not available here.",
-        ]
-        for b in bullets:
-            st.markdown(f":material/check_circle: {b}")
 
 
 # ---------------------------------------------------------------------------
@@ -861,94 +848,68 @@ def _live_camera_block():
     watch = st.session_state.get("watch")
     if watch is None:
         return
+    fresh = read_run()
+    if fresh:
+        watch = fresh
+        st.session_state.watch = watch
+        st.session_state.watch_folder = str(watch.get("folder") or "")
+    status = read_status()
+    record = status.get("record") or {}
+    folder = Path(watch["folder"])
+    marked = None
+    live_path = folder / "live.jpg"
+    if live_path.exists():
+        try:
+            with Image.open(live_path) as img:
+                marked = img.convert("RGB")
+        except (OSError, ValueError):
+            marked = None
 
-    title = html.escape(str(watch.get("name") or "Untitled print / camera"))
+    title = html.escape(str(watch.get("name") or "Untitled"))
     head_l, head_r = st.columns([4, 1], vertical_alignment="center")
     with head_l:
+        started = watch.get("started_iso") or ""
+        try:
+            since = datetime.fromisoformat(started).strftime("%I:%M %p")
+        except (ValueError, TypeError):
+            since = ""
+        sub = f"Since {since}" if since else ""
         st.markdown(
             f"<div class='p3-cam-title'>{title}</div>"
-            f"<div class='p3-cam-sub'>Watching since "
-            f"{datetime.fromisoformat(watch['started_iso']).strftime('%I:%M %p')}</div>",
+            f"<div class='p3-cam-sub'>{sub}</div>",
             unsafe_allow_html=True,
         )
     with head_r:
         st.markdown("<div style='text-align:right;'><span class='p3-pill'>Watching</span></div>", unsafe_allow_html=True)
 
-    try:
-        if watch.get("cam_kind") == "ESP32":
-            image = from_esp32(watch.get("esp_url") or "")
-        else:
-            cam = _get_camera(watch)
-            if cam is None:
-                _render_camera_frame(
-                    None,
-                    cam_idx=int(watch.get("cam_idx", 0)),
-                    conf_pct=0,
-                    live_str=datetime.now().strftime("%I:%M %p"),
-                    cam_name=watch.get("cam_name"),
-                )
-                st.warning(
-                    "That camera did not open. Pick the iPhone in the camera list, unlock it nearby, "
-                    "then click Find cameras."
-                )
-                return
-            image = cam.grab()
-    except (RuntimeError, ValueError, OSError) as exc:
-        st.warning(f"Camera dropped a frame: {exc}")
-        return
+    err = str(status.get("error") or "")
+    if err:
+        st.warning(err)
 
-    try:
-        record = _process_frame(watch, image)
-    except Exception as exc:  # noqa: BLE001
-        st.error(f"Watch tick failed: {exc}")
-        return
-    if record is None:
-        return
-
-    outcome = st.session_state.get("_wp_last_outcome") or {}
-    gate = outcome.get("gate")
-    if (
-        watch.get("auto_pause")
-        and watch.get("pause_allowed")
-        and not watch.get("pause_sent")
-        and gate is not None
-        and gate.accept
-        and gate.command == "pause"
-    ):
-        _apply_pause(watch, kind="auto")
-
-    marked = st.session_state.get("_wp_last_marked", image)
     _render_camera_frame(
         marked,
-        cam_idx=int(watch["cam_idx"]),
-        conf_pct=int(round(float(record["conf"]) * 100)),
-        live_str=datetime.now().strftime('%I:%M %p'),
+        cam_idx=int(watch.get("cam_idx", 0)),
+        conf_pct=int(round(float(record.get("conf") or 0) * 100)),
+        live_str=datetime.now().strftime("%I:%M %p"),
         cam_name=watch.get("cam_name"),
     )
 
-    # Status strip: "Collecting first visual evidence · STABLE"
-    action = pretty_action(record["class"])
-    is_holding = bool(record.get("sticky"))
-    total_frames = int(watch.get("frames", 0))
-    if total_frames < 2:
-        status_title = "Collecting first visual evidence"
-    elif action["severity"] == "ok":
-        status_title = action["label"]
-    else:
-        status_title = f"{action['label']} · {'holding' if is_holding else 'building'}"
+    action = pretty_action(record.get("class") or "good_print")
+    total_frames = int(status.get("frames") or watch.get("frames") or 0)
+    status_title = action["label"] if total_frames else "Starting"
     pill_cls = "p3-pill" if action["severity"] == "ok" else (
         "p3-pill warn" if action["severity"] == "warning" else "p3-pill crit"
     )
-    pill_label = "STABLE" if action["severity"] == "ok" else ("WATCH" if action["severity"] == "warning" else "PAUSE")
+    pill_label = {"ok": "OK", "warning": "WARN", "critical": "CRIT"}[action["severity"]]
     now_str = datetime.now().strftime("%I:%M %p")
-    source = html.escape(str(st.session_state.get("_wp_last_source", "camera")))
-    layer_i = st.session_state.get("_wp_last_layer")
-    layer_z = st.session_state.get("_wp_last_z")
+    source = html.escape(str(status.get("progress_source") or "camera"))
+    layer_i = status.get("layer")
+    layer_z = status.get("z")
     layer_bit = ""
     if layer_i is not None:
         z_txt = f" · Z {float(layer_z):.2f} mm" if layer_z is not None else ""
         layer_bit = f" · layer {int(layer_i)}{z_txt}"
-    progress_err = st.session_state.get("_wp_progress_error") or ""
+    progress_err = status.get("progress_error") or ""
     extra_err = f" · {html.escape(str(progress_err))}" if progress_err else ""
     st.markdown(
         f"""
@@ -964,27 +925,27 @@ def _live_camera_block():
         unsafe_allow_html=True,
     )
 
-    # Visual checks counter + Record check button
     checks_l, checks_r = st.columns([3, 1], vertical_alignment="center")
     with checks_l:
         st.markdown(
             f"<div style='color:var(--p3-muted);font-size:0.88rem;padding-top:0.3rem;'>"
-            f"<b style='color:var(--p3-ink);'>{total_frames}</b> visual checks recorded for this watch"
+            f"<b style='color:var(--p3-ink);'>{total_frames}</b> frames"
             f"</div>",
             unsafe_allow_html=True,
         )
     with checks_r:
         if st.button(
-            "Record check",
+            "Save frame",
             icon=":material/photo_camera:",
             use_container_width=True,
             key="btn_record_check",
+            disabled=marked is None,
         ):
             try:
                 store = JobStore(JOBS_ROOT)
-                path = store.save_frame(Path(watch["folder"]), marked, total_frames)
+                path = store.save_frame(folder, marked, total_frames)
                 store.append_event(
-                    Path(watch["folder"]),
+                    folder,
                     {
                         "t": datetime.now().isoformat(),
                         "kind": "manual_check",
@@ -1003,27 +964,30 @@ def _live_camera_block():
 # ---------------------------------------------------------------------------
 
 def page_watch():
-    render_top_crumb(title="Operator console")
+    if st.session_state.get("watch") is None:
+        attached = attach_if_running()
+        if attached:
+            st.session_state.watch = attached
+            st.session_state.watch_folder = str(attached.get("folder") or "")
     watch = st.session_state.get("watch")
     active = watch is not None
 
     _hero(active)
     _kpi_row(_kpis(active), active)
 
-    st.markdown("<div class='p3-eyebrow' style='margin-top:1.6rem;'>Current watch</div>", unsafe_allow_html=True)
-
     if not active:
         with st.container(border=True):
             st.markdown(
                 "<div style='padding:1.6rem;text-align:center;'>"
-                "<div style='font-weight:600;font-size:1.05rem;margin-bottom:0.35rem;color:#1A1D23;'>"
+                "<div style='font-weight:600;font-size:1.05rem;color:#1A1D23;'>"
                 "No watch running</div>"
-                "<div style='color:#6B7280;font-size:0.92rem;'>"
-                "Click <b>Start a watch</b> to open the camera and begin collecting visual evidence."
-                "</div></div>",
+                "</div>",
                 unsafe_allow_html=True,
             )
         return
+
+    if not loop_alive():
+        start_worker(watch)
 
     with st.expander("Camera", expanded=False):
         if watch.get("cam_kind") == "ESP32":
@@ -1031,23 +995,21 @@ def page_watch():
             if esp != watch.get("esp_url"):
                 watch["esp_url"] = esp.strip()
                 st.session_state.watch = watch
+                write_run(watch)
         else:
-            idx, cam_name = _pick_camera_ui(key="live_cam_label", help_find_key="live_find_cam")
+            idx, cam_name = _pick_camera_ui(
+                key="live_cam_label",
+                current_index=int(watch.get("cam_idx", 0)),
+            )
             if idx != int(watch.get("cam_idx", -1)) or cam_name != watch.get("cam_name"):
                 watch["cam_idx"] = idx
                 watch["cam_name"] = cam_name
                 st.session_state.watch = watch
-                old = st.session_state.get("_wp_cam")
-                if old is not None:
-                    try:
-                        old.close()
-                    except Exception:
-                        pass
-                st.session_state.pop("_wp_cam", None)
+                write_run(watch)
         parsed = _get_parsed(watch)
         if parsed is not None and parsed.layer_count and watch.get("link") == "Camera only":
             layer_i = st.slider(
-                "Layer (manual clock)",
+                "Layer",
                 0,
                 parsed.layer_count - 1,
                 int(watch.get("layer_i") or 0),
@@ -1056,6 +1018,7 @@ def page_watch():
             if layer_i != int(watch.get("layer_i") or 0):
                 watch["layer_i"] = int(layer_i)
                 st.session_state.watch = watch
+                write_run(watch)
 
     _live_dashboard_fragment()
 
@@ -1075,8 +1038,7 @@ def _live_dashboard_fragment():
             return
         with side:
             _render_printer_boundary(watch)
-            _render_safety_panel()
         st.markdown("<div style='height:0.8rem;'></div>", unsafe_allow_html=True)
-        _render_evidence_timeline(st.session_state.get("watch_events") or [])
+        _render_evidence_timeline(_read_events(Path(watch["folder"]))[-30:])
     except Exception as exc:  # noqa: BLE001
         st.error(f"Live watch failed: {exc}")

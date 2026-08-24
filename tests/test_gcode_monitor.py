@@ -188,6 +188,94 @@ def test_warping_on_frame_edge_is_dropped():
     assert keep_box("warping", 0.9, (80, 80, 120, 120), None, frame_h=200) is True
 
 
+def test_avfoundation_list_order():
+    from gcode_monitor.capture import parse_avfoundation_list
+
+    text = """
+[AVFoundation indev @ 0x0] AVFoundation video devices:
+[AVFoundation indev @ 0x0] [0] FaceTime HD Camera
+[AVFoundation indev @ 0x0] [1] Continuity Camera
+[AVFoundation indev @ 0x0] AVFoundation audio devices:
+[AVFoundation indev @ 0x0] [0] MacBook Pro Microphone
+"""
+    names = parse_avfoundation_list(text)
+    assert names[0] == (0, "FaceTime HD Camera")
+    assert names[1] == (1, "Continuity Camera")
+    from gcode_monitor.capture import is_iphone_camera
+
+    assert is_iphone_camera("Continuity Camera") is True
+    assert is_iphone_camera("FaceTime HD Camera") is False
+
+
+def test_opencv_capture_index_swaps_facetime_and_iphone():
+    from gcode_monitor.capture import opencv_capture_index
+
+    names = ["FaceTime HD Camera", "iPhone (2) Camera"]
+    assert opencv_capture_index(0, names, macos=True) == 1
+    assert opencv_capture_index(1, names, macos=True) == 0
+    assert opencv_capture_index(0, names, macos=False) == 0
+    aligned = ["iPhone (2) Camera", "FaceTime HD Camera"]
+    assert opencv_capture_index(0, aligned, macos=True) == 0
+    assert opencv_capture_index(1, aligned, macos=True) == 1
+
+
+def test_preferred_camera_choice_skips_facetime():
+    from gcode_monitor.capture import preferred_camera_choice
+
+    cams = [
+        {"index": 0, "name": "FaceTime HD Camera", "preferred": False},
+        {"index": 1, "name": "Continuity Camera", "preferred": True},
+    ]
+    assert preferred_camera_choice(cams) == (1, "Continuity Camera")
+    assert preferred_camera_choice(
+        [{"index": 0, "name": "FaceTime HD Camera", "preferred": False}]
+    ) == (0, "FaceTime HD Camera")
+
+
+def test_process_webcam_close_kills_child(monkeypatch):
+    from gcode_monitor.capture import ProcessWebcam
+
+    monkeypatch.setattr("gcode_monitor.capture.time.sleep", lambda *_a, **_k: None)
+
+    class FakeProc:
+        def __init__(self):
+            self._alive = True
+            self.terminate_called = 0
+
+        def is_alive(self):
+            return self._alive
+
+        def terminate(self):
+            self.terminate_called += 1
+            self._alive = False
+
+        def kill(self):
+            self._alive = False
+
+        def join(self, timeout=None):
+            return
+
+    class FakeQ:
+        def close(self):
+            return
+
+        def cancel_join_thread(self):
+            return
+
+    cam = ProcessWebcam.__new__(ProcessWebcam)
+    cam.index = 0
+    cam._closed = False
+    cam._finalizer = None
+    cam._stop = type("E", (), {"set": lambda self: None})()
+    proc = FakeProc()
+    cam._proc = proc
+    cam._q = FakeQ()
+    cam.close()
+    cam.close()
+    assert cam._proc is None
+    assert proc.terminate_called == 1
+
+
 def test_http_url_rejects_file_scheme():
     from gcode_monitor.net import http_url
     import pytest

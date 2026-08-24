@@ -158,5 +158,15 @@ def llm_context(verdict: FrameVerdict) -> str:
         f"Off-path boxes dropped: {verdict.dropped}. "
         f"Same finding held across frames: {held}. "
         f"You do not send G-code. Recommend in words only.\n"
+        f"Store A:\n{_store_a_blob(verdict.name)}\n"
         f"G-code slice:\n{verdict.snippet[:700]}"
     )
+
+
+def _store_a_blob(class_name: str) -> str:
+    try:
+        from closed_loop.store_a import retrieve
+
+        return retrieve(class_name) or "(none)"
+    except Exception:
+        return "(none)"
