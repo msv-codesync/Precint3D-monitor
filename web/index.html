@@ -3,7 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Precint3D — Operator console</title>
+  <title>Precint3D</title>
+  <link rel="icon" href="./favicon.ico" sizes="any" />
+  <link rel="icon" href="./favicon.png?v=3" type="image/png" />
+  <link rel="icon" href="./brand/favicon.svg?v=3" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./favicon.png?v=3" />
   <meta name="description" content="Camera-first print watch. Observation stays separate from printer control." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -63,15 +67,14 @@
       gap: 0.12rem;
     }
     .mark {
-      font-family: Syne, sans-serif;
-      font-weight: 800;
-      font-size: 0.92rem;
-      letter-spacing: 0.04em;
-      background: var(--signal);
-      color: #FFFFFF;
-      padding: 0.42rem 0.55rem;
-      border-radius: 0.5rem;
-      line-height: 1;
+      width: 2.35rem;
+      height: 2.35rem;
+      padding: 0;
+      border: 0;
+      border-radius: 0.55rem;
+      object-fit: cover;
+      display: block;
+      background: transparent;
     }
     .brand-name {
       font-family: Syne, sans-serif;
@@ -267,7 +270,7 @@
   <header class="top">
     <div class="top-inner">
       <a class="brand" href="./">
-        <span class="mark">P3D</span>
+        <img class="mark" src="./brand/favicon.png?v=3" alt="Precint3D" width="38" height="38" />
         <span class="brand-copy">
           <span class="brand-name">Precint3D</span>
           <span class="brand-sub">Operator console</span>

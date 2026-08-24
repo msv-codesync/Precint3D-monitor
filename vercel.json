@@ -2,6 +2,5 @@
   "framework": null,
   "installCommand": "echo skip",
   "buildCommand": "echo static",
-  "outputDirectory": "web",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "outputDirectory": "web"
 }

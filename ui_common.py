@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 
 import streamlit as st
@@ -184,15 +185,15 @@ def inject_css():
             margin-bottom: 0.9rem;
           }
           .p3-brand .p3-mark {
-            font-family: Syne, sans-serif;
-            font-weight: 800;
-            font-size: 0.95rem;
-            letter-spacing: 0.04em;
-            background: var(--p3-signal);
-            color: #FFFFFF;
-            padding: 0.42rem 0.55rem;
-            border-radius: 0.5rem;
-            line-height: 1;
+            display: block;
+            width: 2.35rem;
+            height: 2.35rem;
+            padding: 0;
+            border: 0;
+            border-radius: 0.55rem;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: transparent;
           }
           .p3-brand .p3-title { display: flex; flex-direction: column; gap: 0.15rem; }
           .p3-brand .p3-name {
@@ -512,10 +513,12 @@ def inject_css():
 
 
 def render_sidebar_brand() -> None:
+    icon = ROOT / "web" / "brand" / "favicon.png"
+    uri = "data:image/png;base64," + base64.b64encode(icon.read_bytes()).decode("ascii")
     st.markdown(
-        """
+        f"""
         <div class='p3-brand'>
-          <span class='p3-mark'>P3D</span>
+          <img class='p3-mark' src='{uri}' alt='Precint3D' width='38' height='38' />
           <span class='p3-title'>
             <span class='p3-name'>Precint3D</span>
           </span>

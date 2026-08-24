@@ -40,13 +40,16 @@ page_history = _history.page_history
 page_inspect = _inspect.page_inspect
 page_watch = _watch.page_watch
 
+_ICON = _ROOT / "web" / "brand" / "favicon.png"
 st.set_page_config(
     page_title="Precint3D",
-    page_icon=":material/precision_manufacturing:",
+    page_icon=str(_ICON),
     layout="wide",
     initial_sidebar_state="expanded",
 )
 inject_css()
+if _ICON.is_file():
+    st.logo(str(_ICON), icon_image=str(_ICON), size="medium")
 
 # ---- session defaults ------------------------------------------------------
 _defaults = {
