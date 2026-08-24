@@ -23,22 +23,25 @@ report_assets/
 .vercel
 *.zip
 
-# Local-only clutter — not needed to run the console or Vercel web/
+# Local-only — not part of the GitHub / Vercel tree
 a.txt
 debug_import.py
 iphone_test.py
 AGENTS.md
 HANDBOOK.md
 REPLIT_PROMPT.md
+Dockerfile
+image_input_utils.py
+job_mode.py
+Code/
+demo_frames/
+eval/
 app_pages/desk.py
 app_pages/bench.py
 app_pages/records.py
 app_pages/inspect.py
 app_pages/job.py
-Code/dataset_setup.py
-Code/prepare_dataset.py
-Code/train_model.py
-Code/train_yolo.py
+tests/test_image_input_utils.py
 
-# Ultralytics base weights. Trained Precint3D detectors (best.pt, best_8hr.pt) are tracked.
+# Ultralytics base weights. Trained detectors (best.pt, best_8hr.pt) stay in git.
 Models/yolo11*.pt
