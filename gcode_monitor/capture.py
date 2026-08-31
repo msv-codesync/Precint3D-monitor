@@ -1,4 +1,4 @@
-"""Grab one still: ESP32 HTTP, webcam index, or an already-open image."""
+"""Grab one still: network camera (ESP32 / phone), webcam index, or an open image."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import sys
 import time
 import weakref
 from io import BytesIO
+from urllib.parse import urlparse
 
 from PIL import Image
 
@@ -22,7 +23,24 @@ from gcode_monitor.net import http_url
 # Name lists (system_profiler / ffmpeg) usually put FaceTime first. OpenCV's
 # CAP_AVFOUNDATION often puts the iPhone at 0 when Continuity is the default.
 _IPHONE_HINTS = ("iphone", "continuity", "desk view", "center stage")
-_MAC_HINTS = ("facetime", "built-in", "macbook", "imac")
+_MAC_HINTS = ("facetime", "built-in", "macbook", "imac", "integrated", "webcam")
+
+# A phone should reach the console over the LAN, not by hijacking the local
+# capture device. Anything wireless goes through from_network_camera().
+DEFAULT_ESP32_PATH = "/capture"
+_MJPEG_MARKERS = ("multipart/x-mixed-replace", "mjpeg", "mjpg")
+
+LOCAL_SOURCE = "Laptop camera"
+PHONE_SOURCE = "Phone (Wi-Fi)"
+ESP32_SOURCE = "ESP32-CAM"
+CAMERA_SOURCES = (LOCAL_SOURCE, PHONE_SOURCE, ESP32_SOURCE)
+# Sessions saved by earlier builds still say "Local camera" / "ESP32".
+_LOCAL_ALIASES = frozenset({"", "local camera", "laptop camera", "local", "laptop", "usb"})
+
+
+def is_network_source(kind: str) -> bool:
+    """True when frames arrive over HTTP instead of from an attached capture device."""
+    return str(kind or "").strip().lower() not in _LOCAL_ALIASES
 
 
 def _av_backend():
@@ -128,6 +146,11 @@ def is_mac_camera(name: str) -> bool:
     return any(h in text for h in _MAC_HINTS)
 
 
+def is_builtin_camera(name: str) -> bool:
+    """True for the camera physically attached to this machine."""
+    return is_mac_camera(name) or not is_iphone_camera(name)
+
+
 def opencv_capture_index(listed_index: int, names: list[str] | None = None, *, macos: bool | None = None) -> int:
     """Map a labeled camera row to the OpenCV device index on macOS.
 
@@ -171,15 +194,21 @@ def _silence_cv2() -> None:
 
 
 def list_cameras(max_index: int = 6, *, probe: bool = False) -> list[dict]:
-    """Cameras as ``{index, name, preferred}``. Preferred = iPhone / Continuity.
+    """Cameras as ``{index, name, preferred, phone}``. Preferred = this machine's own camera.
 
-    Default lists AVFoundation names without opening devices — probing fights Continuity
-    if another capture is already held. Pass ``probe=True`` only after releasing the live camera.
+    Default lists AVFoundation names without opening devices. Probing fights Continuity
+    if another capture is already held, so pass ``probe=True`` only after releasing the
+    live camera. A paired phone is still listed, but it is never chosen for you.
     """
     names = _macos_camera_names()
     if names and not probe:
         return [
-            {"index": i, "name": name, "preferred": is_iphone_camera(name)}
+            {
+                "index": i,
+                "name": name,
+                "preferred": is_builtin_camera(name),
+                "phone": is_iphone_camera(name),
+            }
             for i, name in enumerate(names)
         ]
 
@@ -203,66 +232,97 @@ def list_cameras(max_index: int = 6, *, probe: bool = False) -> list[dict]:
             {
                 "index": index,
                 "name": name,
-                "preferred": is_iphone_camera(name),
+                "preferred": is_builtin_camera(name),
+                "phone": is_iphone_camera(name),
             }
         )
     return found
 
 
 def default_camera_index(cameras: list[dict] | None = None) -> int:
+    """This machine's own camera. Never auto-select a paired phone."""
     cams = cameras if cameras is not None else list_cameras()
     for cam in cams:
         if cam.get("preferred"):
             return int(cam["index"])
     indices = [int(cam["index"]) for cam in cams]
-    if 1 in indices:
-        return 1
     return indices[0] if indices else 0
 
 
 def preferred_camera_choice(cameras: list[dict] | None = None) -> tuple[int, str]:
-    """Pick Continuity / iPhone from the name list. Does not open a capture."""
+    """Name and index of the camera the console should open. Does not open a capture."""
     cams = cameras if cameras is not None else list_cameras(probe=False)
     for cam in cams:
         if cam.get("preferred"):
             return int(cam["index"]), str(cam["name"])
     names = {int(cam["index"]): str(cam["name"]) for cam in cams}
-    if 1 in names:
-        return 1, names[1]
     if names:
         idx = default_camera_index(cams)
         return idx, names.get(idx, f"Camera {idx}")
-    return 1, "iPhone / Continuity"
+    return 0, "Camera 0"
 
 
-def open_preferred_camera(cameras: list[dict] | None = None) -> tuple[PersistentWebcam, int, str]:
-    """Open Continuity / iPhone after the previous capture has been released."""
-    cams = cameras if cameras is not None else list_cameras(probe=False)
-    idx, name = preferred_camera_choice(cams)
-    order: list[tuple[int, str]] = [(idx, name)]
-    names = {int(cam["index"]): str(cam["name"]) for cam in cams}
-    order.extend((1, names.get(1, "iPhone / Continuity")))
-    order.extend((2, names.get(2, "Camera 2")))
-    seen: set[int] = set()
-    last_err: Exception | None = None
-    for try_idx, try_name in order:
-        if try_idx in seen:
+# ---------------------------------------------------------------------------
+# Network cameras: ESP32-CAM boards and phones running an IP-camera app
+# ---------------------------------------------------------------------------
+
+def normalize_camera_url(text: str, *, path: str = DEFAULT_ESP32_PATH) -> str:
+    """Accept ``192.168.1.20``, ``192.168.1.20:81`` or a full URL and return a usable one.
+
+    Operators paste whatever the board or the phone app shows them. Only the
+    scheme and a default path are filled in; the host is never guessed.
+    """
+    raw = (text or "").strip().strip("/")
+    if not raw:
+        raise ValueError("Enter the camera IP address shown on your phone or board.")
+    if "://" not in raw:
+        raw = f"http://{raw}"
+    parsed = urlparse(raw)
+    if not parsed.path or parsed.path == "/":
+        raw = f"{raw.rstrip('/')}{path}"
+    return http_url(raw)
+
+
+def _frame_from_mjpeg(resp) -> Image.Image:
+    """Pull the first complete JPEG out of a multipart MJPEG stream."""
+    buf = bytearray()
+    for chunk in resp.iter_content(chunk_size=4096):
+        if not chunk:
             continue
-        seen.add(try_idx)
+        buf.extend(chunk)
+        start = buf.find(b"\xff\xd8")
+        end = buf.find(b"\xff\xd9", start + 2) if start >= 0 else -1
+        if start >= 0 and end > start:
+            with Image.open(BytesIO(bytes(buf[start:end + 2]))) as img:
+                return img.convert("RGB")
+        if len(buf) > 4_000_000:
+            break
+    raise RuntimeError("No complete frame arrived from that camera stream.")
+
+
+def from_network_camera(url: str, timeout: float = 8.0) -> Image.Image:
+    """One frame from an ESP32-CAM or a phone IP-camera app.
+
+    Handles both a plain JPEG snapshot endpoint and an MJPEG stream, because
+    Android IP Webcam serves ``/video`` while ESP32-CAM serves ``/capture``.
+    """
+    import requests
+
+    safe = http_url(url)
+    resp = requests.get(safe, timeout=timeout, stream=True)
+    resp.raise_for_status()
+    content_type = str(resp.headers.get("Content-Type", "")).lower()
+    if any(marker in content_type for marker in _MJPEG_MARKERS):
         try:
-            return PersistentWebcam(try_idx), try_idx, try_name
-        except RuntimeError as exc:
-            last_err = exc
-    raise RuntimeError(str(last_err) if last_err else "iPhone camera did not open.")
+            return _frame_from_mjpeg(resp)
+        finally:
+            resp.close()
+    with Image.open(BytesIO(resp.content)) as img:
+        return img.convert("RGB")
 
 
 def from_esp32(url: str, timeout: float = 8.0) -> Image.Image:
-    import requests
-
-    resp = requests.get(http_url(url), timeout=timeout)
-    resp.raise_for_status()
-    with Image.open(BytesIO(resp.content)) as img:
-        return img.convert("RGB")
+    return from_network_camera(url, timeout=timeout)
 
 
 def from_webcam(index: int) -> Image.Image:
@@ -485,7 +545,7 @@ def _shutdown_camera_child(proc, stop_evt, q) -> None:
 
 
 def open_first_camera(preferred: int | None = None) -> tuple[PersistentWebcam, int]:
-    """Open a camera. Prefers iPhone / Continuity Camera, then index 1, then the rest."""
+    """Open a camera. Tries this machine's own camera first, then the rest."""
     cams = list_cameras()
     order: list[int] = []
     if preferred is not None:
@@ -493,7 +553,7 @@ def open_first_camera(preferred: int | None = None) -> tuple[PersistentWebcam, i
     order.append(default_camera_index(cams))
     order.extend(int(cam["index"]) for cam in cams if cam.get("preferred"))
     order.extend(int(cam["index"]) for cam in cams)
-    order.extend([1, 0, 2, 3])
+    order.extend([0, 1, 2, 3])
     seen: set[int] = set()
     last_err: Exception | None = None
     for idx in order:

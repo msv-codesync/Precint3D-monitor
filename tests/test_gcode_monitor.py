@@ -1,5 +1,7 @@
+import sys
 from pathlib import Path
 
+import pytest
 from PIL import Image, ImageDraw
 
 from gcode_monitor.filter import StickyClass, keep_box
@@ -217,6 +219,85 @@ def test_opencv_capture_index_swaps_facetime_and_iphone():
     aligned = ["iPhone (2) Camera", "FaceTime HD Camera"]
     assert opencv_capture_index(0, aligned, macos=True) == 0
     assert opencv_capture_index(1, aligned, macos=True) == 1
+
+
+def test_default_camera_never_picks_a_paired_phone():
+    from gcode_monitor.capture import default_camera_index, list_cameras
+
+    cams = [
+        {"index": 0, "name": "FaceTime HD Camera", "preferred": True, "phone": False},
+        {"index": 1, "name": "iPhone (2) Camera", "preferred": False, "phone": True},
+    ]
+    assert default_camera_index(cams) == 0
+    assert default_camera_index([]) == 0
+    for cam in list_cameras(probe=False):
+        assert "phone" in cam
+
+
+def test_normalize_camera_url_completes_a_bare_ip():
+    from gcode_monitor.capture import normalize_camera_url
+
+    assert normalize_camera_url("192.168.1.20") == "http://192.168.1.20/capture"
+    assert normalize_camera_url("192.168.1.42:8080/shot.jpg") == "http://192.168.1.42:8080/shot.jpg"
+    assert normalize_camera_url("https://cam.local/capture") == "https://cam.local/capture"
+    with pytest.raises(ValueError):
+        normalize_camera_url("   ")
+    with pytest.raises(ValueError):
+        normalize_camera_url("file:///etc/passwd")
+
+
+def test_network_source_covers_legacy_session_names():
+    from gcode_monitor.capture import ESP32_SOURCE, LOCAL_SOURCE, PHONE_SOURCE, is_network_source
+
+    assert is_network_source(LOCAL_SOURCE) is False
+    assert is_network_source("Local camera") is False
+    assert is_network_source(None) is False
+    assert is_network_source(PHONE_SOURCE) is True
+    assert is_network_source(ESP32_SOURCE) is True
+    assert is_network_source("ESP32") is True
+
+
+def test_from_network_camera_reads_an_mjpeg_stream(monkeypatch):
+    import io as _io
+
+    from PIL import Image as _Image
+
+    from gcode_monitor import capture
+
+    buf = _io.BytesIO()
+    _Image.new("RGB", (8, 8), (10, 20, 30)).save(buf, format="JPEG")
+    jpeg = buf.getvalue()
+    body = b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
+
+    class FakeResponse:
+        headers = {"Content-Type": "multipart/x-mixed-replace; boundary=frame"}
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size=4096):
+            for i in range(0, len(body), chunk_size):
+                yield body[i:i + chunk_size]
+
+        def close(self):
+            return None
+
+    fake_requests = type("R", (), {"get": staticmethod(lambda *a, **k: FakeResponse())})
+    monkeypatch.setitem(sys.modules, "requests", fake_requests)
+    image = capture.from_network_camera("http://192.168.1.42:8080/video")
+    assert image.size == (8, 8)
+
+
+def test_esp32_sketch_embeds_the_operator_network():
+    from gcode_monitor.esp32_sketch import BOARDS, sketch_for
+
+    code = sketch_for("PrinterLab", "hunter2", "AI-Thinker ESP32-CAM")
+    assert '"PrinterLab"' in code
+    assert '"hunter2"' in code
+    assert BOARDS["AI-Thinker ESP32-CAM"] in code
+    assert "/capture" in code
+    blank = sketch_for("", "")
+    assert "YOUR_WIFI_NAME" in blank
 
 
 def test_preferred_camera_choice_skips_facetime():

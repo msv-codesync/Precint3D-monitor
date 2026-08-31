@@ -161,7 +161,7 @@ def page_inspect():
                     st.session_state.cam_catalog = catalog
                 if catalog:
                     labels = [
-                        f"{c['name']}" + (" · iPhone" if c.get("preferred") else "")
+                        f"{c['name']}" + (" · paired phone" if c.get("phone") else "")
                         for c in catalog
                     ]
                     pref = default_camera_index(catalog)

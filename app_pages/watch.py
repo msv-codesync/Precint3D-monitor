@@ -19,12 +19,19 @@ from agent_loop.memory import DecisionMemory
 from closed_loop.live import clear_live_state, read_run, read_status, write_run
 from closed_loop.worker import loop_alive, start_worker, stop_worker
 from gcode_monitor.capture import (
+    CAMERA_SOURCES,
+    ESP32_SOURCE,
+    LOCAL_SOURCE,
+    PHONE_SOURCE,
     ProcessWebcam,
     default_camera_index,
-    from_esp32,
+    from_network_camera,
+    is_network_source,
     kill_stray_camera_workers,
     list_cameras,
+    normalize_camera_url,
 )
+from gcode_monitor.esp32_sketch import BOARDS, sketch_for
 from gcode_monitor.filter import StickyClass
 from gcode_monitor.parse import parse_gcode
 from gcode_monitor.pipeline import judge_frame, judge_image
@@ -158,12 +165,11 @@ def _kpis(active: bool) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 def _camera_label(cam: dict) -> str:
-    extra = ""
+    if cam.get("phone"):
+        return f"{cam['name']} · paired phone"
     if cam.get("preferred"):
-        extra = " · iPhone"
-    elif "face" in str(cam.get("name") or "").lower() or "mac" in str(cam.get("name") or "").lower():
-        extra = " · Mac"
-    return f"{cam['name']}{extra}"
+        return f"{cam['name']} · this machine"
+    return str(cam["name"])
 
 
 def _refresh_cameras(*, probe: bool = False) -> list[dict]:
@@ -211,6 +217,75 @@ def _pick_camera_ui(
 
 
 # ---------------------------------------------------------------------------
+# Network cameras: any phone on the same Wi-Fi, or an ESP32-CAM board
+# ---------------------------------------------------------------------------
+
+_PHONE_HELP = (
+    "Put the phone on the same Wi-Fi as this computer, open an IP camera app, "
+    "then paste the address it shows.\n\n"
+    "- **Android** — IP Webcam, then Start server. Address looks like `192.168.1.42:8080/shot.jpg`\n"
+    "- **iPhone** — IP Camera Lite or EpocCam, then copy the address it displays\n\n"
+    "A bare IP such as `192.168.1.42` also works and is completed for you."
+)
+
+
+def _test_network_camera(url: str) -> None:
+    try:
+        safe = normalize_camera_url(url)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    try:
+        frame = from_network_camera(safe, timeout=6.0)
+    except Exception as exc:  # noqa: BLE001 — any transport failure is operator-facing
+        st.error(f"No frame from {safe} — {exc}")
+        return
+    st.success(f"Connected. {frame.width} x {frame.height} frame from {safe}")
+    st.image(frame, width=260)
+
+
+def _esp32_flash_panel(prefix: str) -> None:
+    with st.expander("No board flashed yet? Get the code"):
+        st.markdown(
+            "Flash this once with the Arduino IDE. The board then prints its IP "
+            "address to the serial monitor, and that is what you paste above."
+        )
+        board = st.selectbox("Board", list(BOARDS), key=f"{prefix}_esp_board")
+        w1, w2 = st.columns(2)
+        ssid = w1.text_input("Wi-Fi name", key=f"{prefix}_esp_ssid")
+        password = w2.text_input("Wi-Fi password", type="password", key=f"{prefix}_esp_pass")
+        st.code(sketch_for(ssid, password, board), language="cpp")
+        st.caption("Use the copy icon on the code block, paste into Arduino IDE, then upload.")
+
+
+def _network_camera_ui(kind: str, prefix: str, *, current: str = "") -> str:
+    """IP field plus a connection test. Returns the normalized capture URL."""
+    is_esp = kind == ESP32_SOURCE
+    label = "ESP32-CAM address" if is_esp else "Phone camera address"
+    placeholder = "192.168.1.20" if is_esp else "192.168.1.42:8080/shot.jpg"
+    key = f"{prefix}_net_url"
+    if key not in st.session_state:
+        st.session_state[key] = current
+    st.text_input(label, key=key, placeholder=placeholder)
+    st.caption(
+        "Paste the IP the board printed to the serial monitor."
+        if is_esp
+        else "Any phone works. Nothing is installed on this computer."
+    )
+    if not is_esp:
+        with st.expander("How do I get this address?"):
+            st.markdown(_PHONE_HELP)
+    if st.button("Test connection", key=f"{prefix}_net_test", icon=":material/wifi_tethering:"):
+        _test_network_camera(st.session_state[key])
+    if is_esp:
+        _esp32_flash_panel(prefix)
+    try:
+        return normalize_camera_url(st.session_state[key])
+    except ValueError:
+        return str(st.session_state[key] or "").strip()
+
+
+# ---------------------------------------------------------------------------
 # Dialog: Start a camera watch
 # ---------------------------------------------------------------------------
 
@@ -244,8 +319,8 @@ def _start_watch_dialog():
     st.session_state.setdefault("new_pause", True)
     st.session_state.setdefault("new_auto_pause", True)
     st.session_state.setdefault("new_auto_nudge", True)
-    st.session_state.setdefault("new_cam_kind", "Local camera")
-    st.session_state.setdefault("new_esp_url", "http://192.168.1.20/capture")
+    st.session_state.setdefault("new_cam_kind", LOCAL_SOURCE)
+    st.session_state.setdefault("new_esp_url", "")
     st.session_state.setdefault("new_port", "/dev/tty.usbmodem1101")
     st.session_state.setdefault("new_baud", 250000)
     st.session_state.setdefault("new_gcode_src", "None")
@@ -256,15 +331,16 @@ def _start_watch_dialog():
     with st.expander("Camera", expanded=True):
         cam_kind = st.radio(
             "Source",
-            ["Local camera", "ESP32"],
+            list(CAMERA_SOURCES),
             horizontal=True,
             key="new_cam_kind",
         )
         cam_idx, cam_name = 0, "Camera 0"
-        if cam_kind == "Local camera":
+        cam_url = ""
+        if cam_kind == LOCAL_SOURCE:
             cam_idx, cam_name = _pick_camera_ui(key="new_cam_label")
         else:
-            st.text_input("ESP32 capture URL", key="new_esp_url")
+            cam_url = _network_camera_ui(cam_kind, "new", current=st.session_state.new_esp_url)
 
     with st.expander("Printer"):
         link = st.radio(
@@ -314,6 +390,10 @@ def _start_watch_dialog():
     if not submit:
         return
 
+    if cam_kind != LOCAL_SOURCE and not cam_url:
+        st.error("Enter the camera IP address, or switch the source to the laptop camera.")
+        return
+
     JOBS_ROOT.mkdir(parents=True, exist_ok=True)
     store = JobStore(JOBS_ROOT)
     print_name = (name or "camera watch").strip()
@@ -340,8 +420,8 @@ def _start_watch_dialog():
         "started_iso": datetime.now().isoformat(),
         "cam_kind": cam_kind,
         "cam_idx": int(cam_idx),
-        "cam_name": cam_name if cam_kind == "Local camera" else "ESP32",
-        "esp_url": st.session_state.new_esp_url.strip(),
+        "cam_name": cam_name if cam_kind == LOCAL_SOURCE else cam_kind,
+        "esp_url": cam_url,
         "link": link,
         "octo_url": st.session_state.new_octo_url.strip(),
         "octo_key": st.session_state.new_octo_key.strip(),
@@ -530,6 +610,36 @@ def _hero(active: bool):
                     key="btn_start_watch_hero",
                 ):
                     _start_watch_dialog()
+
+
+def _start_cta():
+    """Idle state. The only thing an operator can do here should be unmissable."""
+    with st.container(border=True):
+        st.markdown(
+            "<div style='padding:2rem 1rem 0.4rem;text-align:center;'>"
+            "<div style='font-weight:700;font-size:1.45rem;color:var(--p3-ink);'>"
+            "No print is being watched</div>"
+            "<div style='color:var(--p3-muted);font-size:0.95rem;margin-top:0.45rem;'>"
+            "Point a camera at the bed, then start a session. The camera stays off until you do."
+            "</div></div>",
+            unsafe_allow_html=True,
+        )
+        pad_l, mid, pad_r = st.columns([1, 1.25, 1])
+        with mid:
+            if st.button(
+                "Start watching this print",
+                type="primary",
+                icon=":material/play_arrow:",
+                use_container_width=True,
+                key="btn_start_watch_empty",
+            ):
+                _start_watch_dialog()
+        st.markdown(
+            "<div style='padding:0.9rem 1rem 1.6rem;text-align:center;color:var(--p3-muted);"
+            "font-size:0.85rem;'>Laptop camera &nbsp;·&nbsp; any phone on this Wi-Fi "
+            "&nbsp;·&nbsp; ESP32-CAM</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def _kpi_row(k: dict, active: bool):
@@ -976,24 +1086,21 @@ def page_watch():
     _kpi_row(_kpis(active), active)
 
     if not active:
-        with st.container(border=True):
-            st.markdown(
-                "<div style='padding:1.6rem;text-align:center;'>"
-                "<div style='font-weight:600;font-size:1.05rem;color:#1A1D23;'>"
-                "No watch running</div>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
+        _start_cta()
         return
 
     if not loop_alive():
         start_worker(watch)
 
     with st.expander("Camera", expanded=False):
-        if watch.get("cam_kind") == "ESP32":
-            esp = st.text_input("ESP32 capture URL", value=watch.get("esp_url") or "", key="live_esp_url")
-            if esp != watch.get("esp_url"):
-                watch["esp_url"] = esp.strip()
+        if is_network_source(watch.get("cam_kind")):
+            url = _network_camera_ui(
+                watch.get("cam_kind") or ESP32_SOURCE,
+                "live",
+                current=watch.get("esp_url") or "",
+            )
+            if url and url != watch.get("esp_url"):
+                watch["esp_url"] = url
                 st.session_state.watch = watch
                 write_run(watch)
         else:

@@ -14,7 +14,12 @@ from closed_loop.live import clear_live_state, read_run, request_stop, stop_requ
 from closed_loop.secrets_env import load_groq_key
 from closed_loop.store_b import OutcomeMemory
 from closed_loop.tick import run_tick
-from gcode_monitor.capture import ProcessWebcam, from_esp32, kill_stray_camera_workers
+from gcode_monitor.capture import (
+    ProcessWebcam,
+    from_network_camera,
+    is_network_source,
+    kill_stray_camera_workers,
+)
 from gcode_monitor.filter import StickyClass
 from gcode_monitor.parse import parse_gcode
 from paths import ROOT, default_model_path
@@ -76,12 +81,12 @@ def run_loop(watch: dict) -> None:
             latest = read_run() or watch
             watch = latest
             try:
-                if watch.get("cam_kind") == "ESP32":
+                if is_network_source(watch.get("cam_kind")):
                     if cam is not None:
                         cam.close()
                         cam = None
                         cam_idx = None
-                    image = from_esp32(watch.get("esp_url") or "")
+                    image = from_network_camera(watch.get("esp_url") or "")
                 else:
                     want = int(watch.get("cam_idx") or 0)
                     if cam is None or cam_idx != want:
