@@ -31,16 +31,48 @@ DEFAULT_ESP32_PATH = "/capture"
 _MJPEG_MARKERS = ("multipart/x-mixed-replace", "mjpeg", "mjpg")
 
 LOCAL_SOURCE = "Laptop camera"
-PHONE_SOURCE = "Phone (Wi-Fi)"
+PHONE_SOURCE = "Phone"
 ESP32_SOURCE = "ESP32-CAM"
 CAMERA_SOURCES = (LOCAL_SOURCE, PHONE_SOURCE, ESP32_SOURCE)
+
+# A paired iPhone arrives as an AVFoundation device, so Direct mode is still a
+# local capture. Only Wi-Fi mode goes over HTTP.
+PHONE_DIRECT = "Phone (Direct)"
+PHONE_WIFI = "Phone (Wi-Fi)"
 # Sessions saved by earlier builds still say "Local camera" / "ESP32".
-_LOCAL_ALIASES = frozenset({"", "local camera", "laptop camera", "local", "laptop", "usb"})
+_LOCAL_ALIASES = frozenset(
+    {
+        "",
+        "local camera",
+        "laptop camera",
+        "local",
+        "laptop",
+        "usb",
+        PHONE_DIRECT.lower(),
+        PHONE_SOURCE.lower(),
+    }
+)
 
 
 def is_network_source(kind: str) -> bool:
     """True when frames arrive over HTTP instead of from an attached capture device."""
     return str(kind or "").strip().lower() not in _LOCAL_ALIASES
+
+
+def continuity_supported() -> bool:
+    """Continuity Camera is a macOS feature. Everywhere else, Direct mode is hidden."""
+    return sys.platform == "darwin"
+
+
+def phone_camera_choice(cameras: list[dict] | None = None) -> tuple[int, str] | None:
+    """The paired iPhone, if macOS is currently offering one. None means not available."""
+    if not continuity_supported():
+        return None
+    cams = cameras if cameras is not None else list_cameras(probe=False)
+    for cam in cams:
+        if cam.get("phone"):
+            return int(cam["index"]), str(cam["name"])
+    return None
 
 
 def _av_backend():
@@ -198,7 +230,7 @@ def list_cameras(max_index: int = 6, *, probe: bool = False) -> list[dict]:
 
     Default lists AVFoundation names without opening devices. Probing fights Continuity
     if another capture is already held, so pass ``probe=True`` only after releasing the
-    live camera. A paired phone is still listed, but it is never chosen for you.
+    live camera. Laptop mode prefers this machine. Phone Direct prefers the paired iPhone.
     """
     names = _macos_camera_names()
     if names and not probe:

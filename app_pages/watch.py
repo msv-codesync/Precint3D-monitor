@@ -22,14 +22,18 @@ from gcode_monitor.capture import (
     CAMERA_SOURCES,
     ESP32_SOURCE,
     LOCAL_SOURCE,
+    PHONE_DIRECT,
     PHONE_SOURCE,
+    PHONE_WIFI,
     ProcessWebcam,
+    continuity_supported,
     default_camera_index,
     from_network_camera,
     is_network_source,
     kill_stray_camera_workers,
     list_cameras,
     normalize_camera_url,
+    phone_camera_choice,
 )
 from gcode_monitor.esp32_sketch import BOARDS, sketch_for
 from gcode_monitor.filter import StickyClass
@@ -229,6 +233,42 @@ _PHONE_HELP = (
 )
 
 
+def _phone_direct_ui(prefix: str) -> tuple[int, str] | None:
+    """Continuity Camera pickup. Returns the capture index once a phone is offered."""
+    found = phone_camera_choice(st.session_state.get("cam_catalog"))
+    if found is None:
+        st.warning("No paired iPhone yet.")
+        st.caption(
+            "Unlock the iPhone, keep it on the same Apple ID as this Mac, and stand it near the "
+            "printer. Continuity Camera shows up within a few seconds. No app, no IP address."
+        )
+        if st.button("Look again", key=f"{prefix}_direct_rescan", icon=":material/refresh:"):
+            _refresh_cameras(probe=False)
+            st.rerun()
+        return None
+    idx, name = found
+    st.success(f"{name} is ready. Connecting Direct.")
+    st.caption("macOS Continuity Camera. Unlock the phone and point it at the bed.")
+    return idx, name
+
+
+def _phone_source_ui(prefix: str, *, current_url: str = "") -> tuple[str, int, str, str]:
+    """Direct (iPhone via Continuity) or Wi-Fi (any phone, paste an address)."""
+    modes = ["Direct", "Wi-Fi"] if continuity_supported() else ["Wi-Fi"]
+    mode_key = f"{prefix}_phone_mode"
+    if mode_key not in st.session_state or st.session_state.get(mode_key) not in modes:
+        st.session_state[mode_key] = modes[0]
+    mode = st.radio("How to connect", modes, horizontal=True, key=mode_key)
+    if mode == "Direct":
+        found = _phone_direct_ui(prefix)
+        if found is None:
+            return PHONE_DIRECT, 0, "", ""
+        idx, name = found
+        return PHONE_DIRECT, idx, name, ""
+    url = _network_camera_ui(PHONE_WIFI, prefix, current=current_url)
+    return PHONE_WIFI, 0, PHONE_WIFI, url
+
+
 def _test_network_camera(url: str) -> None:
     try:
         safe = normalize_camera_url(url)
@@ -319,8 +359,12 @@ def _start_watch_dialog():
     st.session_state.setdefault("new_pause", True)
     st.session_state.setdefault("new_auto_pause", True)
     st.session_state.setdefault("new_auto_nudge", True)
-    st.session_state.setdefault("new_cam_kind", LOCAL_SOURCE)
+    st.session_state.setdefault(
+        "new_cam_kind",
+        PHONE_SOURCE if continuity_supported() else LOCAL_SOURCE,
+    )
     st.session_state.setdefault("new_esp_url", "")
+    st.session_state.setdefault("new_phone_mode", "Direct" if continuity_supported() else "Wi-Fi")
     st.session_state.setdefault("new_port", "/dev/tty.usbmodem1101")
     st.session_state.setdefault("new_baud", 250000)
     st.session_state.setdefault("new_gcode_src", "None")
@@ -339,6 +383,10 @@ def _start_watch_dialog():
         cam_url = ""
         if cam_kind == LOCAL_SOURCE:
             cam_idx, cam_name = _pick_camera_ui(key="new_cam_label")
+        elif cam_kind == PHONE_SOURCE:
+            cam_kind, cam_idx, cam_name, cam_url = _phone_source_ui(
+                "new", current_url=st.session_state.new_esp_url
+            )
         else:
             cam_url = _network_camera_ui(cam_kind, "new", current=st.session_state.new_esp_url)
 
@@ -390,7 +438,10 @@ def _start_watch_dialog():
     if not submit:
         return
 
-    if cam_kind != LOCAL_SOURCE and not cam_url:
+    if cam_kind == PHONE_DIRECT and not cam_name:
+        st.error("Unlock the iPhone and press Look again, or switch to Wi-Fi and paste an address.")
+        return
+    if is_network_source(cam_kind) and not cam_url:
         st.error("Enter the camera IP address, or switch the source to the laptop camera.")
         return
 
@@ -420,7 +471,7 @@ def _start_watch_dialog():
         "started_iso": datetime.now().isoformat(),
         "cam_kind": cam_kind,
         "cam_idx": int(cam_idx),
-        "cam_name": cam_name if cam_kind == LOCAL_SOURCE else cam_kind,
+        "cam_name": cam_name if not is_network_source(cam_kind) else cam_kind,
         "esp_url": cam_url,
         "link": link,
         "octo_url": st.session_state.new_octo_url.strip(),
@@ -636,8 +687,8 @@ def _start_cta():
                 _start_watch_dialog()
         st.markdown(
             "<div style='padding:0.9rem 1rem 1.6rem;text-align:center;color:var(--p3-muted);"
-            "font-size:0.85rem;'>Laptop camera &nbsp;·&nbsp; any phone on this Wi-Fi "
-            "&nbsp;·&nbsp; ESP32-CAM</div>",
+            "font-size:0.85rem;'>Laptop camera &nbsp;·&nbsp; iPhone Direct "
+            "&nbsp;·&nbsp; any phone on Wi-Fi &nbsp;·&nbsp; ESP32-CAM</div>",
             unsafe_allow_html=True,
         )
 
@@ -1093,9 +1144,19 @@ def page_watch():
         start_worker(watch)
 
     with st.expander("Camera", expanded=False):
-        if is_network_source(watch.get("cam_kind")):
+        kind = watch.get("cam_kind")
+        if kind == PHONE_DIRECT:
+            found = _phone_direct_ui("live")
+            if found is not None:
+                idx, cam_name = found
+                if idx != int(watch.get("cam_idx", -1)) or cam_name != watch.get("cam_name"):
+                    watch["cam_idx"] = idx
+                    watch["cam_name"] = cam_name
+                    st.session_state.watch = watch
+                    write_run(watch)
+        elif is_network_source(kind):
             url = _network_camera_ui(
-                watch.get("cam_kind") or ESP32_SOURCE,
+                kind or ESP32_SOURCE,
                 "live",
                 current=watch.get("esp_url") or "",
             )

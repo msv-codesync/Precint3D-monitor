@@ -247,14 +247,40 @@ def test_normalize_camera_url_completes_a_bare_ip():
 
 
 def test_network_source_covers_legacy_session_names():
-    from gcode_monitor.capture import ESP32_SOURCE, LOCAL_SOURCE, PHONE_SOURCE, is_network_source
+    from gcode_monitor.capture import (
+        ESP32_SOURCE,
+        LOCAL_SOURCE,
+        PHONE_DIRECT,
+        PHONE_SOURCE,
+        PHONE_WIFI,
+        is_network_source,
+    )
 
     assert is_network_source(LOCAL_SOURCE) is False
     assert is_network_source("Local camera") is False
     assert is_network_source(None) is False
-    assert is_network_source(PHONE_SOURCE) is True
+    assert is_network_source(PHONE_DIRECT) is False
+    assert is_network_source(PHONE_SOURCE) is False
+    assert is_network_source(PHONE_WIFI) is True
     assert is_network_source(ESP32_SOURCE) is True
     assert is_network_source("ESP32") is True
+
+
+def test_phone_camera_choice_picks_the_paired_iphone(monkeypatch):
+    from gcode_monitor import capture
+
+    cams = [
+        {"index": 0, "name": "FaceTime HD Camera", "preferred": True, "phone": False},
+        {"index": 1, "name": "iPhone (2) Camera", "preferred": False, "phone": True},
+    ]
+    monkeypatch.setattr(capture, "continuity_supported", lambda: True)
+    assert capture.phone_camera_choice(cams) == (1, "iPhone (2) Camera")
+    monkeypatch.setattr(capture, "continuity_supported", lambda: False)
+    assert capture.phone_camera_choice(cams) is None
+    monkeypatch.setattr(capture, "continuity_supported", lambda: True)
+    assert capture.phone_camera_choice(
+        [{"index": 0, "name": "FaceTime HD Camera", "preferred": True, "phone": False}]
+    ) is None
 
 
 def test_from_network_camera_reads_an_mjpeg_stream(monkeypatch):
