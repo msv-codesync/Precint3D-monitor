@@ -67,3 +67,26 @@ def test_llm_context_includes_store_a():
     text = llm_context(verdict)
     assert "Store A:" in text
     assert "You do not send G-code" in text
+
+
+def test_clear_live_state_removes_persisted_watch_files(tmp_path, monkeypatch):
+    from closed_loop import live
+
+    live_dir = tmp_path / "_live"
+    monkeypatch.setattr(live, "LIVE", live_dir)
+    monkeypatch.setattr(live, "RUN", live_dir / "run.json")
+    monkeypatch.setattr(live, "PID", live_dir / "worker.pid")
+    monkeypatch.setattr(live, "STOP", live_dir / "stop")
+    monkeypatch.setattr(live, "STATUS", live_dir / "status.json")
+
+    live.write_run({"folder": str(tmp_path), "cam_idx": 0})
+    live.write_pid(12345)
+    live.request_stop()
+    live.write_status({"worker": "running"})
+
+    live.clear_live_state()
+
+    assert not live.RUN.exists()
+    assert not live.PID.exists()
+    assert not live.STOP.exists()
+    assert not live.STATUS.exists()

@@ -10,7 +10,7 @@ import threading
 import time
 from pathlib import Path
 
-from closed_loop.live import read_run, request_stop, stop_requested, write_run, write_status
+from closed_loop.live import clear_live_state, read_run, request_stop, stop_requested, write_run, write_status
 from closed_loop.secrets_env import load_groq_key
 from closed_loop.store_b import OutcomeMemory
 from closed_loop.tick import run_tick
@@ -159,7 +159,4 @@ def stop_worker() -> None:
         t.join(timeout=8.0)
     _thread = None
     kill_stray_camera_workers()
-    from closed_loop.live import STOP, PID
-
-    STOP.unlink(missing_ok=True)
-    PID.unlink(missing_ok=True)
+    clear_live_state()

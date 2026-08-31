@@ -79,6 +79,13 @@ def request_stop() -> None:
     STOP.write_text("1", encoding="utf-8")
 
 
+def clear_live_state() -> None:
+    """Remove persisted live-watch state after the camera loop is stopped."""
+    _ensure()
+    for path in (RUN, PID, STOP, STATUS):
+        path.unlink(missing_ok=True)
+
+
 def stop_requested() -> bool:
     return STOP.exists()
 
@@ -92,8 +99,7 @@ def kill_worker(timeout: float = 3.0) -> None:
     request_stop()
     pid = running_pid()
     if pid is None:
-        STOP.unlink(missing_ok=True)
-        PID.unlink(missing_ok=True)
+        clear_live_state()
         return
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -111,8 +117,7 @@ def kill_worker(timeout: float = 3.0) -> None:
             os.kill(pid, signal.SIGKILL)
         except OSError:
             pass
-    STOP.unlink(missing_ok=True)
-    PID.unlink(missing_ok=True)
+    clear_live_state()
 
 
 def attach_if_running() -> dict | None:

@@ -63,13 +63,14 @@ for _k, _v in _defaults.items():
     st.session_state.setdefault(_k, _v)
 
 try:
-    from closed_loop.live import attach_if_running
+    from closed_loop.live import clear_live_state
+    from closed_loop.worker import loop_alive, stop_worker
 
     if not st.session_state.get("watch"):
-        _live = attach_if_running()
-        if _live:
-            st.session_state.watch = _live
-            st.session_state.watch_folder = str(_live.get("folder") or "")
+        if loop_alive():
+            stop_worker()
+        else:
+            clear_live_state()
 except Exception:
     pass
 

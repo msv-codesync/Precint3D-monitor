@@ -16,7 +16,7 @@ from PIL import Image
 from actions import pretty as pretty_action
 from agent_loop.cycle import cycle
 from agent_loop.memory import DecisionMemory
-from closed_loop.live import attach_if_running, read_run, read_status, write_run
+from closed_loop.live import clear_live_state, read_run, read_status, write_run
 from closed_loop.worker import loop_alive, start_worker, stop_worker
 from gcode_monitor.capture import (
     ProcessWebcam,
@@ -965,10 +965,10 @@ def _live_camera_block():
 
 def page_watch():
     if st.session_state.get("watch") is None:
-        attached = attach_if_running()
-        if attached:
-            st.session_state.watch = attached
-            st.session_state.watch_folder = str(attached.get("folder") or "")
+        if loop_alive():
+            stop_worker()
+        else:
+            clear_live_state()
     watch = st.session_state.get("watch")
     active = watch is not None
 
