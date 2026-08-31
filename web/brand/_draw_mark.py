@@ -1,4 +1,4 @@
-"""Precint3D mark. Two same-size open contours stacked in Z. Gate on the far corner."""
+"""Clean Precint3D mark: one open frame, centered, no stray ticks."""
 from __future__ import annotations
 
 import math
@@ -7,23 +7,23 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 OUT = Path(__file__).resolve().parent
-TEAL = (22, 133, 107, 255)
-MINT = (78, 203, 163, 255)
 NAVY = (15, 22, 32, 255)
+MINT = (78, 203, 163, 255)
+TEAL = (22, 133, 107, 255)
+WHITE = (255, 255, 255, 255)
 
 
-def contour(cx, cy, w, h, r, t0, t1, n=48, wobble=0.42, seed=2.4, shear=0.09):
+def rounded_open(cx, cy, w, h, r, t0, t1, n=240):
     hw, hh = w / 2, h / 2
     steps = [
-        ("h", cy + hh, cx, cx - hw + r),
+        ("v", cx + hw, cy - hh + r, cy + hh - r),
+        ("a", cx + hw - r, cy + hh - r, 0.0, math.pi / 2),
+        ("h", cy + hh, cx + hw - r, cx - hw + r),
         ("a", cx - hw + r, cy + hh - r, math.pi / 2, math.pi),
         ("v", cx - hw, cy + hh - r, cy - hh + r),
         ("a", cx - hw + r, cy - hh + r, math.pi, 1.5 * math.pi),
         ("h", cy - hh, cx - hw + r, cx + hw - r),
         ("a", cx + hw - r, cy - hh + r, 1.5 * math.pi, 2 * math.pi),
-        ("v", cx + hw, cy - hh + r, cy + hh - r),
-        ("a", cx + hw - r, cy + hh - r, 0.0, math.pi / 2),
-        ("h", cy + hh, cx + hw - r, cx),
     ]
     lengths = []
     for kind, *rest in steps:
@@ -50,11 +50,6 @@ def contour(cx, cy, w, h, r, t0, t1, n=48, wobble=0.42, seed=2.4, shear=0.09):
                     x, y = ax + r * math.cos(a), ay + r * math.sin(a)
                 break
             acc += L
-        phase = t * math.tau * 1.9 + seed
-        amp = wobble * (0.45 + 0.55 * math.sin(t * math.tau * 2.2 + seed))
-        x += amp * math.cos(phase * 1.35)
-        y += amp * math.sin(phase * 1.05) * 0.75
-        x = x + shear * (50 - y)
         pts.append((x, y))
     return pts
 
@@ -62,81 +57,71 @@ def contour(cx, cy, w, h, r, t0, t1, n=48, wobble=0.42, seed=2.4, shear=0.09):
 def path_d(pts) -> str:
     if not pts:
         return ""
-    out = [f"M {pts[0][0]:.2f} {pts[0][1]:.2f}"]
-    for i in range(1, len(pts) - 1):
-        x, y = pts[i]
-        nx, ny = pts[i + 1]
-        out.append(f"Q {x:.2f} {y:.2f} {(x + nx) / 2:.2f} {(y + ny) / 2:.2f}")
-    out.append(f"L {pts[-1][0]:.2f} {pts[-1][1]:.2f}")
-    return " ".join(out)
+    bits = [f"M {pts[0][0]:.2f} {pts[0][1]:.2f}"]
+    for x, y in pts[1:]:
+        bits.append(f"L {x:.2f} {y:.2f}")
+    return " ".join(bits)
 
 
-def ink_png(paths, beads, size=720, bg=(255, 255, 255, 255), color=TEAL, weights=None):
+def paint(pts, bead, *, bg, color, size=512, stroke=0.072):
     img = Image.new("RGBA", (size, size), bg)
     dr = ImageDraw.Draw(img)
     s = size / 80.0
-    if weights is None:
-        weights = [0.04] * len(paths)
-    for pts, w in zip(paths, weights):
-        rad = max(1.8, size * w / 2)
-        for x, y in pts:
-            px, py = x * s, y * s
-            dr.ellipse((px - rad, py - rad, px + rad, py + rad), fill=color)
-    br = size * 0.027
-    for x, y in beads:
+    rad = size * stroke / 2
+    for x, y in pts:
         px, py = x * s, y * s
-        dr.ellipse((px - br, py - br, px + br, py + br), fill=color)
+        dr.ellipse((px - rad, py - rad, px + rad, py + rad), fill=color)
+    br = rad * 1.15
+    bx, by = bead[0] * s, bead[1] * s
+    dr.ellipse((bx - br, by - br, bx + br, by + br), fill=color)
     return img
 
 
-def group(L1, L2, tick, bead, color):
-    return f"""  <path d="{path_d(L1)}" stroke="{color}" stroke-width="3.35" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="{path_d(L2)}" stroke="{color}" stroke-width="2.55" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="{path_d(tick)}" stroke="{color}" stroke-width="2.7" stroke-linecap="round"/>
-  <circle cx="{bead[0]:.2f}" cy="{bead[1]:.2f}" r="3.1" fill="{color}"/>"""
-
-
 def main():
-    # Same part, two layers. Open far corner. Not a letter C (right side exists on L1).
-    L1 = contour(39.5, 45.5, 45, 38, 12.2, 0.00, 0.88, n=180, wobble=0.72, seed=2.4, shear=0.10)
-    # Second layer is only the risen top rail, not a second stem (avoids reading as a letter).
-    L2 = contour(39.5, 33.0, 45, 38, 12.2, 0.30, 0.58, n=100, wobble=0.55, seed=5.1, shear=0.10)
-    L1s = L1[::4] + [L1[-1]]
-    L2s = L2[::4] + [L2[-1]]
-    tick_end = [(63.2, 22.8), (65.1, 18.6), (66.4, 14.8)]
-    tick = []
-    for i in range(24):
-        u = i / 23
-        x = tick_end[0][0] * (1 - u) * (1 - u) + tick_end[1][0] * 2 * (1 - u) * u + tick_end[2][0] * u * u
-        y = tick_end[0][1] * (1 - u) * (1 - u) + tick_end[1][1] * 2 * (1 - u) * u + tick_end[2][1] * u * u
-        tick.append((x, y))
-    tick = [(63.2, 22.8), (65.1, 18.6), (66.4, 14.8)]
-    bead = L1[0]
-    print("L1", L1[0], "->", L1[-1])
-    print("L2", L2[0], "->", L2[-1])
+    # Open at the far corner only. No second stroke, no tick.
+    pts = rounded_open(40, 40, 44, 44, 13, 0.02, 0.86, n=280)
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    dx = 40 - (min(xs) + max(xs)) / 2
+    dy = 40 - (min(ys) + max(ys)) / 2
+    pts = [(x + dx, y + dy) for x, y in pts]
+    bead = pts[0]
+
+    svg_paths = f"""  <path d="{path_d(pts)}" stroke="{{stroke}}" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="{bead[0]:.2f}" cy="{bead[1]:.2f}" r="3.4" fill="{{stroke}}"/>"""
 
     (OUT / "mark.svg").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none" role="img" aria-label="Precint3D">\n'
-        f"{group(L1s, L2s, tick, bead, '#16856B')}\n</svg>\n",
+        + svg_paths.format(stroke="#16856B")
+        + "\n</svg>\n",
         encoding="utf-8",
     )
     (OUT / "favicon.svg").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">\n'
-        '  <rect width="80" height="80" rx="18" fill="#0F1620"/>\n'
-        f"{group(L1s, L2s, tick, bead, '#4ECBA3')}\n</svg>\n",
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">\n'
+        '  <rect width="80" height="80" fill="#0F1620"/>\n'
+        + svg_paths.format(stroke="#4ECBA3")
+        + "\n</svg>\n",
         encoding="utf-8",
     )
     (OUT / "mark-current.svg").write_text(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none" aria-hidden="true">\n'
-        f"{group(L1s, L2s, tick, bead, 'currentColor')}\n</svg>\n",
+        + svg_paths.format(stroke="currentColor")
+        + "\n</svg>\n",
         encoding="utf-8",
     )
-    ink_png([L1, L2, tick], [bead], color=TEAL, weights=[0.040, 0.030, 0.032]).save(OUT / "mark.png")
-    navy = ink_png([L1, L2, tick], [bead], bg=NAVY, color=MINT, weights=[0.040, 0.030, 0.032])
-    navy.save(OUT / "mark-on-navy.png")
-    navy.resize((160, 160), Image.Resampling.LANCZOS).save(OUT / "mark-160.png")
+
+    # Opaque bitmaps so CSS radius does not pick up a gray halo.
+    paint(pts, bead, bg=WHITE, color=TEAL, size=640, stroke=0.070).save(OUT / "mark.png")
+    icon = paint(pts, bead, bg=NAVY, color=MINT, size=640, stroke=0.070)
+    icon.save(OUT / "favicon.png")
+    icon.resize((64, 64), Image.Resampling.LANCZOS).save(OUT / "favicon-64.png")
+    web = OUT.parent
+    icon.resize((256, 256), Image.Resampling.LANCZOS).save(web / "favicon.png")
+    icon.resize((256, 256), Image.Resampling.LANCZOS).save(
+        web / "favicon.ico", sizes=[(16, 16), (32, 32), (48, 48)]
+    )
 
 
 if __name__ == "__main__":

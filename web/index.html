@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Precint3D</title>
   <link rel="icon" href="./favicon.ico" sizes="any" />
-  <link rel="icon" href="./favicon.png?v=3" type="image/png" />
-  <link rel="icon" href="./brand/favicon.svg?v=3" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="./favicon.png?v=3" />
+  <link rel="icon" href="./favicon.png?v=5" type="image/png" />
+  <link rel="icon" href="./brand/favicon.svg?v=5" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./favicon.png?v=5" />
   <meta name="description" content="Camera-first print watch. Observation stays separate from printer control." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -58,23 +58,22 @@
     .brand {
       display: flex;
       align-items: center;
-      gap: 0.7rem;
+      gap: 0.75rem;
       text-decoration: none;
+    }
+    .mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 0.5rem;
+      object-fit: cover;
+      display: block;
+      flex-shrink: 0;
     }
     .brand-copy {
       display: flex;
       flex-direction: column;
       gap: 0.12rem;
-    }
-    .mark {
-      width: 2.35rem;
-      height: 2.35rem;
-      padding: 0;
-      border: 0;
-      border-radius: 0.55rem;
-      object-fit: cover;
-      display: block;
-      background: transparent;
+      justify-content: center;
     }
     .brand-name {
       font-family: Syne, sans-serif;
@@ -270,7 +269,7 @@
   <header class="top">
     <div class="top-inner">
       <a class="brand" href="./">
-        <img class="mark" src="./brand/favicon.png?v=3" alt="Precint3D" width="38" height="38" />
+        <img class="mark" src="./brand/favicon.png?v=5" alt="Precint3D" width="36" height="36" />
         <span class="brand-copy">
           <span class="brand-name">Precint3D</span>
           <span class="brand-sub">Operator console</span>

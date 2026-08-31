@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 
 import streamlit as st
@@ -177,11 +178,20 @@ def inject_css():
 
           .p3-brand {
             display: flex;
+            flex-direction: row;
             align-items: center;
             gap: 0.7rem;
-            padding: 0.2rem 0.85rem 0.9rem;
+            padding: 0.15rem 0.85rem 0.95rem;
             border-bottom: 1px solid var(--p3-sb-line);
             margin-bottom: 0.9rem;
+          }
+          .p3-brand .p3-mark {
+            width: 36px;
+            height: 36px;
+            border-radius: 0.5rem;
+            display: block;
+            flex-shrink: 0;
+            object-fit: cover;
           }
           .p3-name {
             font-family: Syne, sans-serif;
@@ -189,12 +199,15 @@ def inject_css():
             font-size: 1.15rem;
             letter-spacing: -0.02em;
             color: var(--p3-sb-ink);
-          }
-          section[data-testid="stSidebar"] [data-testid="stImage"] {
+            line-height: 1;
+            padding: 0;
             margin: 0;
           }
-          section[data-testid="stSidebar"] [data-testid="stImage"] img {
-            border-radius: 0.55rem;
+          section[data-testid="stSidebar"] [data-testid="stElementToolbar"],
+          section[data-testid="stSidebar"] [data-testid="StyledFullScreenButton"],
+          section[data-testid="stSidebar"] [data-testid="stToolbarActionButton"],
+          section[data-testid="stSidebar"] [data-testid="stBaseButton-headerNoPadding"] {
+            display: none !important;
           }
           .p3-brand .p3-sub {
             font-family: "IBM Plex Sans", sans-serif;
@@ -507,14 +520,16 @@ def inject_css():
 
 def render_sidebar_brand() -> None:
     icon = ROOT / "web" / "brand" / "favicon.png"
-    left, right = st.columns([1, 3.4], vertical_alignment="center")
-    with left:
-        st.image(str(icon), width=42)
-    with right:
-        st.markdown(
-            "<div class='p3-name'>Precint3D</div>",
-            unsafe_allow_html=True,
-        )
+    uri = "data:image/png;base64," + base64.b64encode(icon.read_bytes()).decode("ascii")
+    st.markdown(
+        f"""
+        <div class="p3-brand">
+          <img class="p3-mark" src="{uri}" alt="" width="36" height="36" />
+          <div class="p3-name">Precint3D</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_top_crumb(bay: str = "Bay 01", title: str = "Watch") -> None:
