@@ -3,210 +3,292 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Precint3D</title>
+  <title>Precint3D — Operator console</title>
   <link rel="icon" href="./favicon.ico" sizes="any" />
-  <link rel="icon" href="./favicon.png?v=5" type="image/png" />
-  <link rel="icon" href="./brand/favicon.svg?v=5" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="./favicon.png?v=5" />
-  <meta name="description" content="Camera-first print watch. Observation stays separate from printer control." />
+  <link rel="icon" href="./favicon.png?v=6" type="image/png" />
+  <link rel="icon" href="./brand/favicon.svg?v=6" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./favicon.png?v=6" />
+  <meta name="description" content="Camera-first FDM print watch. Observation stays separate from printer control." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #FFFFFF;
-      --panel: #FFFFFF;
-      --panel-alt: #F3F4F6;
-      --line: #E5E7EB;
-      --line-soft: #EEF0F3;
-      --ink: #1A1D23;
-      --muted: #6B7280;
+      --bg: #0F1620;
+      --panel: #182233;
+      --line: #1E2A3E;
+      --ink: #E9E2D3;
+      --muted: #8B94A3;
       --signal: #16856B;
-      --signal-soft: rgba(22, 133, 107, 0.10);
-      --sb: #0F1620;
-      --sb-panel: #182233;
-      --sb-ink: #E9E2D3;
-      --sb-muted: #8B94A3;
-      --sb-line: #1E2A3E;
+      --signal-2: #4ECBA3;
       --warn: #C77E00;
       --crit: #B4372A;
+      --paper: #FFFFFF;
+      --paper-ink: #1A1D23;
+      --paper-mute: #6B7280;
+      --paper-line: #E5E7EB;
+      --paper-alt: #F3F4F6;
+      --mx: 50vw;
+      --my: 50vh;
     }
-
     * { box-sizing: border-box; }
-    html, body { margin: 0; background: var(--bg); color: var(--ink); }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
     body {
       font-family: "IBM Plex Sans", system-ui, sans-serif;
-      min-height: 100dvh;
-      line-height: 1.5;
-    }
-    a { color: inherit; }
-
-    .top {
-      background: var(--sb);
-      color: var(--sb-ink);
-      border-bottom: 1px solid var(--sb-line);
-    }
-    .top-inner {
-      width: min(1120px, calc(100% - 2rem));
-      margin: 0 auto;
-      min-height: 4.1rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      text-decoration: none;
-    }
-    .mark {
-      width: 36px;
-      height: 36px;
-      border-radius: 0.5rem;
-      object-fit: cover;
-      display: block;
-      flex-shrink: 0;
-    }
-    .brand-copy {
-      display: flex;
-      flex-direction: column;
-      gap: 0.12rem;
-      justify-content: center;
-    }
-    .brand-name {
-      font-family: Syne, sans-serif;
-      font-weight: 800;
-      font-size: 1.12rem;
-      letter-spacing: -0.02em;
-    }
-    .brand-sub {
-      font-size: 0.68rem;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--sb-muted);
-    }
-    .nav {
-      display: flex;
-      gap: 0.35rem;
-      font-size: 0.9rem;
-      color: var(--sb-muted);
-    }
-    .nav span {
-      padding: 0.45rem 0.75rem;
-      border-radius: 0.55rem;
-    }
-    .nav span.on {
-      background: var(--sb-panel);
-      color: var(--sb-ink);
-      box-shadow: inset 3px 0 0 var(--signal);
-    }
-
-    main {
-      width: min(1120px, calc(100% - 2rem));
-      margin: 0 auto;
-      padding: 2.4rem 0 3.2rem;
-      display: grid;
-      grid-template-columns: 1.05fr 1fr;
-      gap: 3rem;
-      align-items: center;
-    }
-
-    .eyebrow {
-      font-size: 0.72rem;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 0.7rem;
-    }
-    h1 {
-      font-family: Syne, sans-serif;
-      font-weight: 800;
-      font-size: clamp(2rem, 4.6vw, 3.05rem);
-      letter-spacing: -0.03em;
-      line-height: 1.08;
-      margin: 0 0 0.85rem;
-    }
-    h1 .accent { color: var(--signal); }
-    .lead {
-      color: var(--muted);
-      font-size: 1.05rem;
-      max-width: 34rem;
-      margin: 0 0 1.5rem;
-    }
-    .cta {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 2.75rem;
-      padding: 0.7rem 1.15rem;
-      background: var(--signal);
-      color: #FFFFFF;
-      text-decoration: none;
-      font-weight: 600;
-      border-radius: 0.5rem;
-    }
-    .cta-row { display: flex; flex-wrap: wrap; gap: 0.65rem; margin: 0 0 0.85rem; }
-    .cta.ghost {
-      background: transparent;
-      color: var(--signal);
-      border: 1.5px solid var(--signal);
-    }
-    .cta.ghost:hover { background: var(--signal-soft); }
-    .cta:focus-visible {
-      outline: 3px solid var(--signal);
-      outline-offset: 3px;
-    }
-    .hint {
-      margin: 0.7rem 0 0;
-      font-size: 0.82rem;
-      color: var(--muted);
-    }
-
-    .stage {
-      background: var(--panel-alt);
-      border: 1px solid var(--line);
-      border-radius: 0.7rem;
-      padding: 1.1rem 1.1rem 0.9rem;
       overflow: hidden;
     }
-    .stage-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 0.65rem;
-      font-size: 0.72rem;
-      letter-spacing: 0.12em;
+    button { font-family: inherit; cursor: pointer; }
+    a { color: inherit; }
+
+    .cursor {
+      position: fixed; width: 10px; height: 10px; border-radius: 50%;
+      background: var(--signal-2); pointer-events: none; z-index: 80;
+      transform: translate(-50%, -50%); mix-blend-mode: screen;
+      box-shadow: 0 0 18px var(--signal-2);
+    }
+    .cursor-ring {
+      position: fixed; width: 42px; height: 42px; border-radius: 50%;
+      border: 1px solid rgba(78, 203, 163, 0.55);
+      pointer-events: none; z-index: 80;
+      transform: translate(-50%, -50%);
+    }
+
+    /* -------- Landing -------- */
+    #gate {
+      position: fixed; inset: 0; z-index: 20;
+      overflow: hidden;
+    }
+    #fx {
+      position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+    }
+    .vignette {
+      position: absolute; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(circle at var(--mx) var(--my), rgba(22,133,107,0.22) 0%, transparent 34%),
+        radial-gradient(1200px 700px at 50% 110%, rgba(22,133,107,0.16), transparent 55%);
+    }
+    .scanlines {
+      position: absolute; inset: 0; pointer-events: none; opacity: 0.07;
+      background: repeating-linear-gradient(0deg, #000 0 1px, transparent 1px 3px);
+    }
+    .gate-ui {
+      position: absolute; inset: 0;
+      display: grid; place-items: center;
+      text-align: center;
+      padding: 2rem;
+    }
+    .gate-copy { position: relative; z-index: 2; max-width: 44rem; }
+    .mark {
+      width: 72px; height: 72px; border-radius: 1rem;
+      display: block; margin: 0 auto 1.15rem;
+      box-shadow: 0 0 0 1px var(--line), 0 18px 50px rgba(22,133,107,0.28);
+    }
+    .eyebrow {
+      font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--signal-2); margin-bottom: 0.7rem;
+    }
+    h1 {
+      font-family: Syne, sans-serif; font-weight: 800;
+      font-size: clamp(2.6rem, 8vw, 5.4rem);
+      letter-spacing: -0.045em; line-height: 0.94;
+      margin: 0 0 0.85rem;
+    }
+    h1 span { color: var(--signal-2); }
+    .lead {
+      color: var(--muted); font-size: 1.05rem; line-height: 1.55;
+      margin: 0 auto 1.8rem; max-width: 32rem;
+    }
+    .enter {
+      --ox: 0px; --oy: 0px;
+      position: relative;
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.7rem;
+      min-width: 17.5rem; min-height: 3.6rem;
+      padding: 0.95rem 1.6rem;
+      border: 0; border-radius: 999px;
+      background: var(--signal); color: #fff;
+      font-weight: 700; font-size: 1.05rem; letter-spacing: 0.02em;
+      transform: translate(var(--ox), var(--oy));
+      transition: transform 80ms linear, box-shadow 200ms ease, background 200ms ease;
+      box-shadow: 0 0 0 1px rgba(78,203,163,0.35), 0 18px 50px rgba(22,133,107,0.38);
+    }
+    .enter:hover { background: #10715C; }
+    .enter:focus-visible { outline: 3px solid var(--signal-2); outline-offset: 4px; }
+    .enter svg { width: 18px; height: 18px; fill: currentColor; }
+    .hint {
+      margin: 1.15rem 0 0; color: var(--muted); font-size: 0.78rem; letter-spacing: 0.12em;
       text-transform: uppercase;
+    }
+    .corners span {
+      position: absolute; width: 28px; height: 28px; border-color: var(--signal);
+      border-style: solid; opacity: 0.45;
+    }
+    .corners .tl { top: 1.4rem; left: 1.4rem; border-width: 2px 0 0 2px; }
+    .corners .tr { top: 1.4rem; right: 1.4rem; border-width: 2px 2px 0 0; }
+    .corners .bl { bottom: 1.4rem; left: 1.4rem; border-width: 0 0 2px 2px; }
+    .corners .br { bottom: 1.4rem; right: 1.4rem; border-width: 0 2px 2px 0; }
+    .live-chip {
+      position: absolute; top: 1.5rem; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 0.45rem;
+      font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase;
       color: var(--muted);
     }
+    .live-chip i {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--signal-2);
+      box-shadow: 0 0 10px var(--signal-2); animation: blink 1.6s ease-in-out infinite;
+    }
+
+    body.is-in #gate { pointer-events: none; opacity: 0; transition: opacity 420ms ease; }
+    body.is-in { overflow: auto; }
+    body.is-in .cursor, body.is-in .cursor-ring { display: none; }
+
+    /* -------- Console -------- */
+    #desk {
+      min-height: 100dvh;
+      display: grid;
+      grid-template-columns: 268px 1fr;
+      background: var(--paper);
+      color: var(--paper-ink);
+      opacity: 0;
+      pointer-events: none;
+    }
+    body.is-in #desk { opacity: 1; pointer-events: auto; }
+
+    .sb {
+      background: var(--bg); color: var(--ink);
+      border-right: 1px solid var(--line);
+      padding: 0.9rem 0 1.4rem;
+      display: flex; flex-direction: column; gap: 0.2rem;
+    }
+    .sb-brand {
+      display: flex; align-items: center; gap: 0.7rem;
+      padding: 0.15rem 0.85rem 0.95rem;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 0.9rem;
+      text-decoration: none;
+    }
+    .sb-brand img { width: 36px; height: 36px; border-radius: 0.5rem; }
+    .sb-name { font-family: Syne, sans-serif; font-weight: 800; font-size: 1.15rem; }
+    .sb-kicker {
+      padding: 0 0.95rem 0.45rem;
+      font-size: 0.68rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted);
+    }
+    .nav-btn {
+      display: flex; align-items: center; gap: 0.7rem;
+      margin: 0 0.55rem; padding: 0.7rem 0.8rem;
+      border: 0; border-radius: 0.55rem;
+      background: transparent; color: var(--muted);
+      font-size: 0.95rem; text-align: left;
+    }
+    .nav-btn.on {
+      background: var(--panel); color: var(--ink);
+      box-shadow: inset 3px 0 0 var(--signal);
+    }
+    .nav-btn:hover { color: var(--ink); }
+    .sb-foot {
+      margin-top: auto; padding: 0.8rem 0.95rem 0;
+      font-size: 0.72rem; color: var(--muted); line-height: 1.45;
+    }
+    .sb-foot a { color: var(--signal-2); }
+
+    .main { padding: 0.9rem 1.4rem 2rem; min-width: 0; }
+    .hero {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 0.85rem;
+    }
+    .hero h2 {
+      font-family: Syne, sans-serif; font-weight: 800;
+      font-size: 2.1rem; letter-spacing: -0.03em; margin: 0;
+    }
+    .kpis {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.7rem;
+      margin-bottom: 1rem;
+    }
+    .kpi {
+      border: 1px solid var(--paper-line); border-radius: 0.7rem;
+      padding: 0.75rem 0.9rem; background: #fff;
+    }
+    .kpi b {
+      display: block; font-size: 0.68rem; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--paper-mute); font-weight: 600;
+    }
+    .kpi span {
+      font-family: Syne, sans-serif; font-size: 1.7rem; font-weight: 800;
+    }
+    .kpi.active { outline: 2px solid var(--signal); }
+
+    .stage-grid {
+      display: grid; grid-template-columns: 1.55fr 1fr; gap: 1rem;
+    }
+    .card {
+      border: 1px solid var(--paper-line); border-radius: 0.7rem;
+      background: #fff; overflow: hidden;
+    }
+    .card-h {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.75rem 1rem 0.4rem;
+    }
+    .card-h strong { font-size: 0.95rem; }
+    .sub { color: var(--paper-mute); font-size: 0.78rem; }
     .pill {
-      font-size: 0.68rem;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--signal);
-      background: var(--signal-soft);
-      border: 1px solid rgba(22, 133, 107, 0.28);
-      border-radius: 999px;
-      padding: 0.22rem 0.55rem;
+      font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--signal); background: rgba(22,133,107,0.1);
+      border: 1px solid rgba(22,133,107,0.28);
+      border-radius: 999px; padding: 0.22rem 0.55rem;
     }
-    .stage svg {
-      display: block;
-      width: 100%;
-      height: auto;
-      background: #0F1620;
-      border-radius: 0.5rem;
+    .cam {
+      margin: 0 0.85rem 0.85rem; background: #0F1620; border-radius: 0.55rem;
+      position: relative; overflow: hidden; aspect-ratio: 16 / 10;
+    }
+    .cam svg { width: 100%; height: 100%; display: block; }
+    .ov { position: absolute; font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: #8B94A3; }
+    .ov.tl { top: 0.7rem; left: 0.8rem; color: #4ECBA3; }
+    .ov.tr { top: 0.7rem; right: 0.8rem; }
+    .ov.br { bottom: 0.7rem; right: 0.8rem; color: #E9E2D3; }
+    .status {
+      display: flex; align-items: center; gap: 0.7rem;
+      padding: 0.55rem 1rem 1rem;
+    }
+    .status .icon {
+      width: 1.6rem; height: 1.6rem; border-radius: 50%;
+      background: rgba(22,133,107,0.12); color: var(--signal);
+      display: grid; place-items: center; font-size: 0.85rem;
+    }
+    .ghost-btn, .go-btn {
+      border-radius: 0.5rem; min-height: 2.4rem; padding: 0 0.9rem;
+      font-weight: 600; font-size: 0.9rem;
+    }
+    .ghost-btn { border: 1px solid var(--paper-line); background: #fff; color: var(--paper-ink); }
+    .go-btn { border: 0; background: var(--signal); color: #fff; }
+    .go-btn:disabled { background: #D1D5DB; color: #6B7280; }
+    .printer { padding: 0.4rem 1rem 1rem; }
+    .printer .row { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.85rem; }
+    .frames { margin-top: 1rem; }
+    .ev {
+      display: grid; grid-template-columns: 10px 7.5rem 1fr auto;
+      gap: 0.7rem; align-items: center;
+      padding: 0.45rem 1rem; font-size: 0.88rem;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--signal); }
+    .page { display: none; }
+    .page.on { display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { text-align: left; padding: 0.7rem 0.55rem; border-bottom: 1px solid var(--paper-line); }
+    th { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--paper-mute); }
+    .inspect-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 1rem; }
+    .shot {
+      background: #111; border-radius: 0.55rem; min-height: 280px;
+      display: grid; place-items: center; position: relative; color: #8B94A3;
+    }
+    .bbox-demo {
+      position: absolute; left: 28%; top: 34%; width: 38%; height: 28%;
+      border: 2px solid var(--warn);
+    }
+    .bbox-demo em {
+      position: absolute; top: -1.2rem; left: 0; font-style: normal;
+      color: var(--warn); font-size: 0.75rem; letter-spacing: 0.06em;
     }
 
-    .gantry { animation: gantry 6.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-    .extrude { stroke-dasharray: 280; stroke-dashoffset: 280; animation: draw 6.4s ease-in-out infinite; }
-    .layer { transform-origin: 210px 228px; transform-box: fill-box; animation: layer 6.4s ease-in-out infinite; }
-    .scan { animation: scan 2.8s ease-in-out infinite; }
-    .bbox { animation: bbox 6.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-    .ring { animation: ring 2.8s ease-out infinite; transform-origin: 392px 78px; transform-box: fill-box; }
-    .live-dot { animation: blink 1.6s ease-in-out infinite; }
-
+    @keyframes blink { 50% { opacity: 0.25; } }
     @keyframes gantry {
       0%, 8% { transform: translate(0, 0); }
       28% { transform: translate(92px, 0); }
@@ -222,132 +304,305 @@
       0%, 18% { transform: scaleY(0.08); opacity: 0.2; }
       88%, 100% { transform: scaleY(1); opacity: 1; }
     }
-    @keyframes scan {
-      0%, 100% { transform: translateY(0); opacity: 0.15; }
-      50% { transform: translateY(54px); opacity: 0.55; }
-    }
-    @keyframes bbox {
-      0%, 42% { opacity: 0; }
-      55%, 82% { opacity: 1; }
-      100% { opacity: 0.35; }
-    }
-    @keyframes ring {
-      0% { transform: scale(0.7); opacity: 0.45; }
-      100% { transform: scale(1.55); opacity: 0; }
-    }
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.25; }
-    }
+    .gantry { animation: gantry 6.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .extrude { stroke-dasharray: 280; stroke-dashoffset: 280; animation: draw 6.4s ease-in-out infinite; }
+    .layer { transform-origin: 210px 228px; transform-box: fill-box; animation: layer 6.4s ease-in-out infinite; }
 
-    .enter { animation: enter 420ms ease-out both; }
-    .enter.d2 { animation-delay: 80ms; }
-    .enter.d3 { animation-delay: 140ms; }
-    @keyframes enter {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: none; }
+    @media (max-width: 960px) {
+      #desk { grid-template-columns: 1fr; }
+      .sb { flex-direction: row; flex-wrap: wrap; align-items: center; padding: 0.6rem; }
+      .sb-brand { border: 0; margin: 0; padding: 0.2rem 0.5rem; }
+      .sb-kicker, .sb-foot { display: none; }
+      .kpis, .stage-grid, .inspect-grid { grid-template-columns: 1fr; }
+      .cursor, .cursor-ring { display: none; }
     }
-
-    footer {
-      width: min(1120px, calc(100% - 2rem));
-      margin: 0 auto;
-      padding: 0 0 2.4rem;
-      color: var(--muted);
-      font-size: 0.84rem;
-    }
-
-    @media (max-width: 840px) {
-      .nav { display: none; }
-      main { grid-template-columns: 1fr; gap: 1.6rem; padding-top: 1.6rem; }
-    }
-
     @media (prefers-reduced-motion: reduce) {
-      .gantry, .extrude, .layer, .scan, .bbox, .ring, .live-dot, .enter {
-        animation: none !important;
-      }
+      .gantry, .extrude, .layer, .live-chip i { animation: none !important; }
       .extrude { stroke-dashoffset: 0; }
       .layer { transform: none; opacity: 1; }
-      .bbox { opacity: 1; }
     }
   </style>
 </head>
 <body>
-  <header class="top">
-    <div class="top-inner">
-      <a class="brand" href="./">
-        <img class="mark" src="./brand/favicon.png?v=5" alt="Precint3D" width="36" height="36" />
-        <span class="brand-copy">
-          <span class="brand-name">Precint3D</span>
-          <span class="brand-sub">Operator console</span>
-        </span>
-      </a>
-      <nav class="nav" aria-label="Workspace">
-        <span class="on">Watch</span>
-        <span>Inspect</span>
-        <span>History</span>
-      </nav>
+  <div class="cursor" id="dot"></div>
+  <div class="cursor-ring" id="ring"></div>
+
+  <section id="gate" aria-label="Landing">
+    <canvas id="fx"></canvas>
+    <div class="vignette"></div>
+    <div class="scanlines"></div>
+    <div class="corners" aria-hidden="true">
+      <span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span>
     </div>
-  </header>
-
-  <main>
-    <section class="enter">
-      <div class="eyebrow">Live print view</div>
-      <h1>Watch the print.<br /><span class="accent">Trust the evidence.</span></h1>
-      <p class="lead">A calm read on what the camera sees, with a hard boundary between observation and printer control.</p>
-      <div class="cta-row">
-        <a class="cta" href="https://github.com/msv-codesync/Precint3D-monitor">Open the source on GitHub</a>
-        <a class="cta ghost" href="https://precint3d.vercel.app">This public page</a>
+    <div class="live-chip"><i></i> Camera armed · observe only</div>
+    <div class="gate-ui">
+      <div class="gate-copy">
+        <img class="mark" src="./brand/favicon.png?v=6" width="72" height="72" alt="Precint3D" />
+        <div class="eyebrow">FDM print monitor</div>
+        <h1>Watch the print.<br /><span>Enter the console.</span></h1>
+        <p class="lead">Live camera, YOLO on the toolpath, and a code gate in front of the printer. A sentence cannot pause the machine by itself.</p>
+        <button class="enter" id="enter" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          Enter console
+        </button>
+        <p class="hint">Watch · Inspect · History</p>
       </div>
-      <p class="hint">Detection does not run on Vercel. Clone the repo, then <code>streamlit run app.py</code> and open http://127.0.0.1:8501 on your machine.</p>
-    </section>
+    </div>
+  </section>
 
-    <aside class="stage enter d2" aria-hidden="false">
-      <div class="stage-head">
-        <span>Cam 01 / observe only</span>
-        <span class="pill">Watching</span>
+  <div id="desk">
+    <aside class="sb">
+      <a class="sb-brand" href="./">
+        <img src="./brand/favicon.png?v=6" alt="" width="36" height="36" />
+        <span class="sb-name">Precint3D</span>
+      </a>
+      <div class="sb-kicker">Workspace</div>
+      <button class="nav-btn on" data-page="watch" type="button">Watch</button>
+      <button class="nav-btn" data-page="inspect" type="button">Inspect</button>
+      <button class="nav-btn" data-page="history" type="button">History</button>
+      <div class="sb-foot">
+        Public walkthrough of the operator console.<br />
+        Detector weights stay on your machine.<br />
+        <a href="https://github.com/msv-codesync/Precint3D-monitor">GitHub source</a>
       </div>
-      <svg viewBox="0 0 520 340" role="img" aria-label="Vector animation of a printer laying a layer while a camera watches the part.">
-        <rect width="520" height="340" fill="#0F1620" />
-        <text x="18" y="28" fill="#8B94A3" font-size="11" font-family="IBM Plex Sans, sans-serif" letter-spacing="1.6">LIVE</text>
-        <circle class="live-dot" cx="52" cy="24" r="4" fill="#16856B" />
-
-        <!-- Printer frame -->
-        <rect x="72" y="58" width="8" height="214" rx="2" fill="#2A3344" />
-        <rect x="316" y="58" width="8" height="214" rx="2" fill="#2A3344" />
-        <rect x="68" y="268" width="260" height="10" rx="3" fill="#1E2A3E" />
-        <rect x="92" y="198" width="212" height="64" rx="6" fill="#182233" stroke="#1E2A3E" />
-
-        <!-- Printed part (builds) -->
-        <rect class="layer" x="148" y="176" width="100" height="52" rx="3" fill="#16856B" opacity="0.85" />
-        <path class="extrude" d="M148 176 H248 V228 H148 Z" fill="none" stroke="#E9E2D3" stroke-width="2.2" />
-
-        <!-- Gantry + nozzle -->
-        <g class="gantry">
-          <rect x="78" y="92" width="240" height="6" rx="2" fill="#8B94A3" />
-          <rect x="146" y="86" width="18" height="28" rx="3" fill="#E9E2D3" />
-          <rect x="151" y="114" width="8" height="18" rx="1.5" fill="#16856B" />
-        </g>
-
-        <!-- Camera watch -->
-        <g>
-          <circle class="ring" cx="392" cy="78" r="22" fill="none" stroke="#16856B" stroke-width="1.5" />
-          <rect x="368" y="58" width="48" height="36" rx="6" fill="#182233" stroke="#16856B" stroke-width="1.5" />
-          <circle cx="392" cy="76" r="10" fill="#0F1620" stroke="#16856B" />
-          <circle cx="392" cy="76" r="4" fill="#16856B" />
-          <path d="M372 98 L148 176" stroke="#16856B" stroke-opacity="0.35" stroke-dasharray="4 5" />
-          <rect class="scan" x="372" y="64" width="40" height="2" fill="#16856B" opacity="0.5" />
-        </g>
-
-        <!-- Detector box on the part -->
-        <rect class="bbox" x="168" y="188" width="44" height="28" fill="none" stroke="#C77E00" stroke-width="1.8" />
-        <text class="bbox" x="168" y="184" fill="#C77E00" font-size="10" font-family="IBM Plex Sans, sans-serif">held</text>
-
-        <text x="18" y="322" fill="#8B94A3" font-size="11" font-family="IBM Plex Sans, sans-serif" letter-spacing="1.2">RECORDING VISUAL EVIDENCE</text>
-        <text x="392" y="322" fill="#E9E2D3" font-size="11" font-family="IBM Plex Sans, sans-serif">94%</text>
-      </svg>
     </aside>
-  </main>
 
-  <footer class="enter d3">This site is the public door. Detection stays on your computer, with your camera.</footer>
+    <main class="main">
+      <section class="page on" id="page-watch">
+        <div class="hero">
+          <h2>Watch</h2>
+          <button class="ghost-btn" type="button" id="stopDemo">Stop watch</button>
+        </div>
+        <div class="kpis">
+          <div class="kpi active"><b>Active</b><span>1</span></div>
+          <div class="kpi"><b>Prints</b><span>24</span></div>
+          <div class="kpi"><b>Critical</b><span>34</span></div>
+          <div class="kpi"><b>Hours</b><span>16.5h</span></div>
+        </div>
+        <div class="stage-grid">
+          <article class="card">
+            <div class="card-h">
+              <div>
+                <strong>Mega S camera watch</strong>
+                <div class="sub">Since 07:10 PM</div>
+              </div>
+              <span class="pill">Watching</span>
+            </div>
+            <div class="cam">
+              <span class="ov tl">iPhone (2) camera</span>
+              <span class="ov tr">Live · 07:10 PM</span>
+              <span class="ov br">0%</span>
+              <svg viewBox="0 0 520 340" role="img" aria-label="Printer being watched">
+                <rect width="520" height="340" fill="#0F1620" />
+                <rect x="72" y="58" width="8" height="214" rx="2" fill="#2A3344" />
+                <rect x="316" y="58" width="8" height="214" rx="2" fill="#2A3344" />
+                <rect x="68" y="268" width="260" height="10" rx="3" fill="#1E2A3E" />
+                <rect x="92" y="198" width="212" height="64" rx="6" fill="#182233" />
+                <rect class="layer" x="148" y="176" width="100" height="52" rx="3" fill="#16856B" />
+                <path class="extrude" d="M148 176 H248 V228 H148 Z" fill="none" stroke="#E9E2D3" stroke-width="2.2" />
+                <g class="gantry">
+                  <rect x="78" y="92" width="240" height="6" rx="2" fill="#8B94A3" />
+                  <rect x="146" y="86" width="18" height="28" rx="3" fill="#E9E2D3" />
+                  <rect x="151" y="114" width="8" height="18" rx="1.5" fill="#16856B" />
+                </g>
+                <rect x="368" y="58" width="48" height="36" rx="6" fill="#182233" stroke="#16856B" />
+                <circle cx="392" cy="76" r="10" fill="#0F1620" stroke="#16856B" />
+                <circle cx="392" cy="76" r="4" fill="#16856B" />
+              </svg>
+            </div>
+            <div class="status">
+              <div class="icon">✓</div>
+              <div>
+                <div><strong>Looks fine</strong></div>
+                <div class="sub">Last read 07:10 PM · source: camera · layer 0</div>
+              </div>
+              <span class="pill" style="margin-left:auto">OK</span>
+            </div>
+          </article>
+          <article class="card printer">
+            <div class="card-h"><strong>Printer</strong></div>
+            <div class="row">
+              <div>
+                <strong>Camera only</strong>
+                <div class="sub">OFFLINE</div>
+              </div>
+            </div>
+            <button class="go-btn" type="button" disabled style="width:100%">Pause</button>
+            <p class="sub" style="margin:0.75rem 0 0">Pause stays off until OctoPrint or Mega S USB is linked and the verifier allows it.</p>
+          </article>
+        </div>
+        <article class="card frames">
+          <div class="card-h"><strong>Frames</strong><span class="pill" style="color:var(--paper-mute);background:#F3F4F6;border-color:#E5E7EB">1 FRAME</span></div>
+          <div class="ev"><span class="dot"></span><span class="sub">07:10 PM · 0%</span><span>Looks fine</span><span class="pill">OK</span></div>
+        </article>
+      </section>
+
+      <section class="page" id="page-inspect">
+        <div class="hero"><h2>Inspect</h2></div>
+        <div class="inspect-grid">
+          <article class="card">
+            <div class="card-h"><strong>Frame</strong><span class="sub">orig_spaghetti.jpg</span></div>
+            <div class="shot">
+              <div class="bbox-demo"><em>Spaghetti 66%</em></div>
+              Still · perception only
+            </div>
+            <div class="status">
+              <div>
+                <strong>SPAGHETTI — 66%</strong>
+                <div class="sub">Floor 0.32 · margin +0.34 · kept yes</div>
+              </div>
+            </div>
+          </article>
+          <article class="card" style="padding:1rem">
+            <strong>Settings</strong>
+            <p class="sub">Inspect never writes to the printer. Same YOLO weights as Watch.</p>
+            <p class="sub">Confidence 0.15 · IoU 0.45</p>
+            <button class="go-btn" type="button">Save inspection</button>
+          </article>
+        </div>
+      </section>
+
+      <section class="page" id="page-history">
+        <div class="hero"><h2>History</h2></div>
+        <article class="card" style="padding:0.4rem 0.6rem 0.8rem">
+          <table>
+            <thead>
+              <tr><th>Print</th><th>Finding</th><th>Frames</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Mega S camera watch</td><td>Looks fine</td><td>18</td><td>STOPPED</td></tr>
+              <tr><td>iphone16pro_case(1).gcode</td><td>Looks fine</td><td>12</td><td>STOPPED</td></tr>
+              <tr><td>Nose_Pad.gcode</td><td>None</td><td>0</td><td>STOPPED</td></tr>
+              <tr><td>camera watch</td><td>Looks fine</td><td>6</td><td>STOPPED</td></tr>
+            </tbody>
+          </table>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const root = document.documentElement;
+    const gate = document.getElementById("gate");
+    const dot = document.getElementById("dot");
+    const ring = document.getElementById("ring");
+    const enter = document.getElementById("enter");
+    const canvas = document.getElementById("fx");
+    const ctx = canvas.getContext("2d");
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const coarse = matchMedia("(pointer: coarse)").matches;
+
+    let mx = innerWidth / 2, my = innerHeight / 2;
+    let rx = mx, ry = my;
+    let btnX = 0, btnY = 0;
+
+    const parts = Array.from({ length: 70 }, () => ({
+      x: Math.random() * innerWidth,
+      y: Math.random() * innerHeight,
+      v: 0.15 + Math.random() * 0.55,
+      r: 0.6 + Math.random() * 1.6,
+    }));
+
+    function size() {
+      canvas.width = innerWidth * devicePixelRatio;
+      canvas.height = innerHeight * devicePixelRatio;
+      canvas.style.width = innerWidth + "px";
+      canvas.style.height = innerHeight + "px";
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    }
+    size();
+    addEventListener("resize", size);
+
+    function draw() {
+      const w = innerWidth, h = innerHeight;
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = "rgba(30,42,62,0.85)";
+      ctx.lineWidth = 1;
+      const gap = 48;
+      const ox = (mx - w / 2) * 0.04;
+      const oy = (my - h / 2) * 0.04;
+      for (let x = -gap; x < w + gap; x += gap) {
+        ctx.beginPath();
+        ctx.moveTo(x + ox, 0);
+        ctx.lineTo(x + ox, h);
+        ctx.stroke();
+      }
+      for (let y = -gap; y < h + gap; y += gap) {
+        ctx.beginPath();
+        ctx.moveTo(0, y + oy);
+        ctx.lineTo(w, y + oy);
+        ctx.stroke();
+      }
+      for (const p of parts) {
+        p.y -= p.v;
+        const dx = mx - p.x, dy = my - p.y;
+        const d = Math.hypot(dx, dy) || 1;
+        p.x += dx / d * 0.12;
+        if (p.y < -8) { p.y = h + 8; p.x = Math.random() * w; }
+        ctx.fillStyle = "rgba(78,203,163,0.55)";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (!document.body.classList.contains("is-in") && !reduce) requestAnimationFrame(draw);
+    }
+    if (!reduce) requestAnimationFrame(draw);
+
+    addEventListener("pointermove", (e) => {
+      mx = e.clientX; my = e.clientY;
+      root.style.setProperty("--mx", mx + "px");
+      root.style.setProperty("--my", my + "px");
+      if (!coarse) {
+        dot.style.left = mx + "px";
+        dot.style.top = my + "px";
+      }
+      const r = enter.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const dx = mx - cx, dy = my - cy;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 180) {
+        btnX = dx * 0.18;
+        btnY = dy * 0.18;
+      } else {
+        btnX *= 0.8; btnY *= 0.8;
+      }
+      enter.style.setProperty("--ox", btnX.toFixed(1) + "px");
+      enter.style.setProperty("--oy", btnY.toFixed(1) + "px");
+    });
+
+    function tickRing() {
+      rx += (mx - rx) * 0.18;
+      ry += (my - ry) * 0.18;
+      if (!coarse) {
+        ring.style.left = rx + "px";
+        ring.style.top = ry + "px";
+      }
+      if (!document.body.classList.contains("is-in")) requestAnimationFrame(tickRing);
+    }
+    if (!coarse && !reduce) requestAnimationFrame(tickRing);
+
+    function enterConsole() {
+      document.body.classList.add("is-in");
+      location.hash = "console";
+    }
+    enter.addEventListener("click", enterConsole);
+    if (location.hash === "#console") enterConsole();
+
+    document.querySelectorAll(".nav-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("on", b === btn));
+        document.querySelectorAll(".page").forEach((p) => {
+          p.classList.toggle("on", p.id === "page-" + btn.dataset.page);
+        });
+      });
+    });
+    document.getElementById("stopDemo").addEventListener("click", () => {
+      document.body.classList.remove("is-in");
+      location.hash = "";
+      if (!reduce) requestAnimationFrame(draw);
+      if (!coarse && !reduce) requestAnimationFrame(tickRing);
+    });
+  </script>
 </body>
 </html>
