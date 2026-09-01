@@ -147,7 +147,13 @@
       font-weight: 600;
       border-radius: 0.5rem;
     }
-    .cta:hover { background: #10715C; }
+    .cta-row { display: flex; flex-wrap: wrap; gap: 0.65rem; margin: 0 0 0.85rem; }
+    .cta.ghost {
+      background: transparent;
+      color: var(--signal);
+      border: 1.5px solid var(--signal);
+    }
+    .cta.ghost:hover { background: var(--signal-soft); }
     .cta:focus-visible {
       outline: 3px solid var(--signal);
       outline-offset: 3px;
@@ -288,8 +294,11 @@
       <div class="eyebrow">Live print view</div>
       <h1>Watch the print.<br /><span class="accent">Trust the evidence.</span></h1>
       <p class="lead">A calm read on what the camera sees, with a hard boundary between observation and printer control.</p>
-      <a class="cta" href="http://127.0.0.1:8501">Open the console</a>
-      <p class="hint">Runs on your machine. Pause only after a finding holds and the verifier allows it.</p>
+      <div class="cta-row">
+        <a class="cta" href="https://github.com/msv-codesync/Precint3D-monitor">Open the source on GitHub</a>
+        <a class="cta ghost" href="https://precint3d.vercel.app">This public page</a>
+      </div>
+      <p class="hint">Detection does not run on Vercel. Clone the repo, then <code>streamlit run app.py</code> and open http://127.0.0.1:8501 on your machine.</p>
     </section>
 
     <aside class="stage enter d2" aria-hidden="false">
