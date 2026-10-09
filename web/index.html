@@ -148,14 +148,14 @@
         <img class="mark" src="./brand/favicon.png?v=7" width="72" height="72" alt="Precint3D" />
         <div class="eyebrow">FDM print monitor</div>
         <h1>Watch the print.<br /><span>Enter the console.</span></h1>
-        <p class="lead">Opens the real Precint3D app on this computer: Watch, Inspect, History, camera, and the YOLO loop.</p>
-        <a class="enter" id="enter" href="http://127.0.0.1:8501">
+        <p class="lead">Opens the hosted Precint3D console: Inspect a print photo with the YOLO detector, browse History, and see the Watch loop and its printer boundary.</p>
+        <a class="enter" id="enter" href="https://precint3d.streamlit.app">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
           Enter console
         </a>
         <p class="hint">
-          If the app is not running yet, in the Precint3D folder type<br />
-          <code>streamlit run app.py</code>
+          Live camera and printer pause need the console on the machine next to the printer:<br />
+          <code>streamlit run app.py</code> then <a href="http://127.0.0.1:8501">127.0.0.1:8501</a>
           · <a href="https://github.com/msv-codesync/Precint3D-monitor">GitHub</a>
         </p>
       </div>
@@ -163,7 +163,7 @@
   </section>
 
   <script>
-    const CONSOLE = "http://127.0.0.1:8501";
+    const CONSOLE = "https://precint3d.streamlit.app";
     const root = document.documentElement;
     const dot = document.getElementById("dot");
     const ring = document.getElementById("ring");
